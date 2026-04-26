@@ -178,6 +178,11 @@ interface VisibleTreeNode {
     children: VisibleTreeNode[];
 }
 
+interface DetailHeroPill {
+    label: string;
+    className?: string;
+}
+
 const SYNTHETIC_ROOT_ID = "__root__";
 
 function shortId(id: string): string {
@@ -447,6 +452,10 @@ function buildFallbackExecutionGraph(snapshot: Snapshot): ExecutionGraphSnapshot
 function getNodeTitleByKey(nodesByKey: Map<string, ExecutionNode>, key: string | null | undefined): string {
     if (!key) return "Root session";
     return nodesByKey.get(key)?.title || shortId(parseNodeKey(key).id);
+}
+
+function pluralize(count: number, noun: string, plural = `${noun}s`): string {
+    return `${count} ${count === 1 ? noun : plural}`;
 }
 
 function resolveOwnerFromPath(
@@ -731,6 +740,13 @@ function collectDescendantNodes(model: ActivityModel, nodeKey: string): Executio
     return descendants;
 }
 
+function selectionForNode(node: ExecutionNode): Selection {
+    if (node.kind === "root") {
+        return { kind: "root", id: SYNTHETIC_ROOT_ID };
+    }
+    return { kind: node.kind, id: node.id };
+}
+
 function selectionExists(selection: Selection, model: ActivityModel | null): boolean {
     if (!selection || !model) return true;
     return selectionToStructuralNodeKey(selection, model) != null;
@@ -803,6 +819,76 @@ function OverviewCards({ stats, subagents }: { stats: Stats; subagents: Subagent
     );
 }
 
+function BranchOverviewStrip({
+    model,
+    visibleTree,
+    selection,
+    onSelect,
+}: {
+    model: ActivityModel;
+    visibleTree: VisibleTreeNode | null;
+    selection: Selection;
+    onSelect: (selection: Selection) => void;
+}) {
+    const selectedNodeKey = selectionToStructuralNodeKey(selection, model);
+    const selectedPath = new Set(model.nodesByKey.get(selectedNodeKey ?? "")?.pathKeys ?? []);
+    const allVisibleChildren = (visibleTree?.children ?? [])
+        .map((branch) => ({
+            branch,
+            node: model.nodesByKey.get(branch.key),
+        }))
+        .filter((entry): entry is { branch: VisibleTreeNode; node: ExecutionNode } => entry.node != null);
+    const candidateBranches = allVisibleChildren.filter(({ node }) => node.kind === "subagent" || node.childKeys.length > 0 || node.orphan);
+    const sourceBranches = candidateBranches.length > 0 ? candidateBranches : allVisibleChildren;
+    const hiddenBranchCount = Math.max(0, sourceBranches.length - 12);
+    const branches = sourceBranches.slice(0, 12);
+
+    if (branches.length === 0) return null;
+
+    return (
+        <section className="branch-overview-strip">
+            <div className="branch-overview-header">
+                <span className="branch-overview-title">Root branches</span>
+                <span className="branch-overview-caption">
+                    Jump by branch. Scan state before drilling in.
+                    {hiddenBranchCount > 0 ? ` Showing ${branches.length} of ${sourceBranches.length}.` : ""}
+                </span>
+            </div>
+            <div className="branch-overview-list">
+                {branches.map(({ node }) => {
+                    const isSelected = selectedNodeKey === node.key;
+                    const inSelectedPath = !isSelected && selectedPath.has(node.key);
+                    return (
+                        <button
+                            key={node.key}
+                            type="button"
+                            className={`branch-overview-card ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""}`}
+                            onClick={() => onSelect(selectionForNode(node))}
+                            title={node.title}
+                        >
+                            <div className="branch-overview-card-top">
+                                <span className={`activity-icon ${statusClass(node.status)}`}>{node.icon}</span>
+                                <span className="branch-overview-card-title">{node.title}</span>
+                                <span className="branch-overview-card-time">{fmtTime(node.ts)}</span>
+                            </div>
+                            {node.subtitle && <div className="branch-overview-card-subtitle">{node.subtitle}</div>}
+                            <div className="branch-overview-card-meta">
+                                <span className="branch-overview-meta-item">{node.kindLabel}</span>
+                                {node.kind !== "message" && node.kind !== "root" && (
+                                    <span className={`branch-overview-meta-item ${statusClass(node.status)}`}>{normalizeStatus(node.status)}</span>
+                                )}
+                                <span className="branch-overview-meta-item">{pluralize(node.childKeys.length, "child")}</span>
+                                <span className="branch-overview-meta-item">{pluralize(node.descendantCount, "node")}</span>
+                                {node.orphan && <span className="branch-overview-meta-item branch-overview-meta-warn">orphan</span>}
+                            </div>
+                        </button>
+                    );
+                })}
+            </div>
+        </section>
+    );
+}
+
 function EventRow({
     item,
     selection,
@@ -868,11 +954,23 @@ function TreeBranch({
         : selectedPath.has(node.key)
             ? true
             : !(collapsed[node.key] ?? false);
+    const depthGuides = Math.max(0, node.pathKeys.length - 2);
 
     return (
         <div className={`tree-branch ${node.kind === "root" ? "tree-branch-root" : ""}`}>
             <div className={`tree-row ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""}`}>
-                <div className="tree-row-main" style={{ paddingLeft: `${10 + ((node.pathKeys.length - 1) * 16)}px` }}>
+                <div className="tree-row-main">
+                    <div className="tree-guides" aria-hidden="true">
+                        {Array.from({ length: depthGuides }).map((_, index) => {
+                            const ancestorKey = node.pathKeys[index + 1];
+                            return (
+                                <span
+                                    key={`${node.key}-guide-${ancestorKey}-${index}`}
+                                    className={`tree-guide ${selectedPath.has(ancestorKey) ? "active" : ""}`}
+                                />
+                            );
+                        })}
+                    </div>
                     {hasChildren ? (
                         <button
                             type="button"
@@ -886,12 +984,12 @@ function TreeBranch({
                         <span className="tree-toggle-spacer" />
                     )}
 
-                    <button
-                        type="button"
-                        className="tree-select"
-                        onClick={() => onSelect(node.kind === "root" ? { kind: "root", id: SYNTHETIC_ROOT_ID } : { kind: node.kind, id: node.id })}
-                        title={node.title}
-                    >
+                        <button
+                            type="button"
+                            className="tree-select"
+                            onClick={() => onSelect(selectionForNode(node))}
+                            title={node.title}
+                        >
                         <span className={`activity-icon ${statusClass(node.status)}`}>{node.icon}</span>
                         <span className="tree-title-wrap">
                             <span className="tree-title">{node.title}</span>
@@ -901,15 +999,15 @@ function TreeBranch({
                 </div>
 
                 <div className="tree-row-meta">
-                    <span className={`kind-pill kind-pill-${node.kind}`}>{node.kindLabel}</span>
+                    <span className="tree-meta-text tree-meta-kind">{node.kindLabel}</span>
                     {node.kind !== "root" && node.kind !== "message" && (
-                        <span className={`lane-status ${statusClass(node.status)}`}>{normalizeStatus(node.status)}</span>
+                        <span className={`tree-meta-text tree-meta-status ${statusClass(node.status)}`}>{normalizeStatus(node.status)}</span>
                     )}
-                    {node.childKeys.length > 0 && <span className="summary-chip">{node.childKeys.length} child</span>}
+                    {node.childKeys.length > 0 && <span className="tree-meta-text">{pluralize(node.childKeys.length, "child")}</span>}
                     {node.descendantCount > node.childKeys.length && (
-                        <span className="summary-chip">{node.descendantCount} total</span>
+                        <span className="tree-meta-text">{pluralize(node.descendantCount, "node")}</span>
                     )}
-                    {node.orphan && <span className="summary-chip summary-chip-warn">orphan</span>}
+                    {node.orphan && <span className="tree-meta-text tree-meta-warn">orphan</span>}
                 </div>
 
                 <div className="tree-row-time">{fmtTime(node.ts)}</div>
@@ -937,23 +1035,18 @@ function TreeBranch({
 
 function ExecutionTreeView({
     model,
-    filters,
+    visibleTree,
     query,
     selection,
     onSelect,
 }: {
     model: ActivityModel;
-    filters: FilterState;
+    visibleTree: VisibleTreeNode | null;
     query: string;
     selection: Selection;
     onSelect: (selection: Selection) => void;
 }) {
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-
-    const visibleTree = useMemo(
-        () => buildVisibleTree(model, model.rootNodeKey, filters, query),
-        [filters, model, query],
-    );
 
     const toggleNode = useCallback((key: string) => {
         setCollapsed((current) => ({ ...current, [key]: !current[key] }));
@@ -1059,6 +1152,10 @@ function ActivityWorkspace({
     });
 
     const query = search.trim().toLowerCase();
+    const visibleTree = useMemo(
+        () => buildVisibleTree(model, model.rootNodeKey, filters, query),
+        [filters, model, query],
+    );
 
     const toggleFilter = useCallback((key: FilterKey) => {
         setFilters((current) => ({ ...current, [key]: !current[key] }));
@@ -1119,10 +1216,17 @@ function ActivityWorkspace({
                 </div>
             </div>
 
+            <BranchOverviewStrip
+                model={model}
+                visibleTree={visibleTree}
+                selection={selection}
+                onSelect={onSelect}
+            />
+
             {viewMode === "tree" ? (
                 <ExecutionTreeView
                     model={model}
-                    filters={filters}
+                    visibleTree={visibleTree}
                     query={query}
                     selection={selection}
                     onSelect={onSelect}
@@ -1137,6 +1241,35 @@ function ActivityWorkspace({
                 />
             )}
         </>
+    );
+}
+
+function DetailHero({
+    kicker,
+    title,
+    subtitle,
+    pills,
+}: {
+    kicker: string;
+    title: string;
+    subtitle?: string;
+    pills: DetailHeroPill[];
+}) {
+    return (
+        <div className="detail-hero">
+            <div className="detail-hero-kicker">{kicker}</div>
+            <h3>{title}</h3>
+            {subtitle && <div className="detail-hero-subtitle">{subtitle}</div>}
+            {pills.length > 0 && (
+                <div className="detail-hero-pills">
+                    {pills.map((pill) => (
+                        <span key={`${pill.label}-${pill.className ?? ""}`} className={pill.className ?? "summary-chip"}>
+                            {pill.label}
+                        </span>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -1195,7 +1328,17 @@ function DetailPane({
 
         return (
             <div className="detail-content">
-                <h3>🧭 Root session</h3>
+                <DetailHero
+                    kicker="Trace explorer"
+                    title="🧭 Root session"
+                    subtitle="Foreground session + orphan activity"
+                    pills={[
+                        { label: pluralize(rootNode?.childKeys.length ?? 0, "top-level branch"), className: "summary-chip" },
+                        { label: pluralize(rootNode?.descendantCount ?? 0, "descendant"), className: "summary-chip" },
+                        { label: pluralize(model.graph.orphanNodeKeys.length, "orphan"), className: model.graph.orphanNodeKeys.length > 0 ? "summary-chip summary-chip-warn" : "summary-chip" },
+                        { label: `Updated ${fmtTime(rootNode?.ts)}`, className: "summary-chip" },
+                    ]}
+                />
                 <div className="detail-section">
                     <h4>Lineage</h4>
                     <Breadcrumbs pathKeys={rootNode?.pathKeys ?? [model.rootNodeKey]} model={model} />
@@ -1227,7 +1370,18 @@ function DetailPane({
 
         return (
             <div className="detail-content">
-                <h3>{statusIcon(record.status)} {record.agentDisplayName || record.agentName}</h3>
+                <DetailHero
+                    kicker="Agent branch"
+                    title={`${statusIcon(record.status)} ${record.agentDisplayName || record.agentName}`}
+                    subtitle={record.agentDescription || structuralNode.subtitle}
+                    pills={[
+                        { label: record.agentName || "subagent", className: "summary-chip" },
+                        { label: normalizeStatus(record.status), className: `lane-status ${statusClass(record.status)}` },
+                        { label: pluralize(structuralNode.childKeys.length, "direct child"), className: "summary-chip" },
+                        { label: pluralize(structuralNode.descendantCount, "descendant"), className: "summary-chip" },
+                        { label: `Updated ${fmtTime(structuralNode.ts)}`, className: "summary-chip" },
+                    ]}
+                />
                 <div className="detail-section">
                     <h4>Lineage</h4>
                     <Breadcrumbs pathKeys={pathKeys} model={model} />
@@ -1279,7 +1433,17 @@ function DetailPane({
 
         return (
             <div className="detail-content">
-                <h3>{statusIcon(record.status)} {record.toolName || "Tool Call"}</h3>
+                <DetailHero
+                    kicker="Tool call"
+                    title={`${statusIcon(record.status)} ${record.toolName || "Tool Call"}`}
+                    subtitle={structuralNode?.subtitle}
+                    pills={[
+                        { label: normalizeStatus(record.status), className: `lane-status ${statusClass(record.status)}` },
+                        { label: pluralize(structuralNode?.childKeys.length ?? 0, "direct child"), className: "summary-chip" },
+                        { label: pluralize(structuralNode?.descendantCount ?? 0, "descendant"), className: "summary-chip" },
+                        { label: `Updated ${fmtTime(record.completedAt || record.startedAt || structuralNode?.ts)}`, className: "summary-chip" },
+                    ]}
+                />
                 <div className="detail-section">
                     <h4>Lineage</h4>
                     <Breadcrumbs pathKeys={pathKeys} model={model} />
@@ -1333,7 +1497,16 @@ function DetailPane({
 
     return (
         <div className="detail-content">
-            <h3>💬 Assistant Message</h3>
+            <DetailHero
+                kicker="Assistant message"
+                title={`💬 ${previewText(safeText(record.content) || "(empty)", 88)}`}
+                subtitle={record.toolRequestCount > 0 ? `${record.toolRequestCount} pending tool request${record.toolRequestCount === 1 ? "" : "s"}` : structuralNode?.subtitle}
+                pills={[
+                    { label: "message", className: "summary-chip" },
+                    { label: pluralize(record.toolRequestCount, "tool request"), className: "summary-chip" },
+                    { label: `Updated ${fmtTime(record.timestamp)}`, className: "summary-chip" },
+                ]}
+            />
             <div className="detail-section">
                 <h4>Lineage</h4>
                 <Breadcrumbs pathKeys={pathKeys} model={model} />
@@ -1481,11 +1654,11 @@ function App() {
                     <OverviewCards stats={snapshot.stats} subagents={snapshot.subagents} />
                     <div className="panels">
                         <section className="panel-list">
-                            <div className="panel-header">Activity</div>
+                            <div className="panel-header">Trace explorer</div>
                             <ActivityWorkspace model={model} selection={selection} onSelect={setSelection} />
                         </section>
                         <section className="panel-detail">
-                            <div className="panel-header">Details</div>
+                            <div className="panel-header">Inspector</div>
                             <DetailPane snapshot={snapshot} model={model} selection={selection} />
                         </section>
                     </div>
