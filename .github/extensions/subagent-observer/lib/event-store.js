@@ -389,13 +389,14 @@ export function createEventStore() {
  *
  * @param {ReturnType<typeof createEventStore>} store
  * @param {object} session - The Copilot SDK session object
- * @param {{ log?: (msg: string) => Promise<void> }} [opts]
+ * @param {{ log?: (msg: string) => Promise<void>, isCurrentGeneration?: () => boolean }} [opts]
  * @returns {Promise<() => void>} Cleanup function that removes listeners
  *   registered by this call.  Calling it is optional but recommended when
  *   re-wiring (e.g., on a new onSessionStart) to avoid duplicate subscriptions.
  */
 export async function wireSession(store, session, opts = {}) {
     const log = opts.log ?? (() => Promise.resolve());
+    const isCurrentGeneration = opts.isCurrentGeneration ?? (() => true);
 
     // Phase 1: Subscribe live events into a buffer
     /** @type {Array<{ type: string, event: any }>} */
@@ -433,11 +434,26 @@ export async function wireSession(store, session, opts = {}) {
         registeredListeners.push({ type, handler });
     }
 
+    // Helper: tear down listeners registered by this call.
+    function unwire() {
+        disposed = true;
+        for (const { type, handler } of registeredListeners) {
+            try { session.off?.(type, handler); } catch { /* session may already be torn down */ }
+        }
+        registeredListeners.length = 0;
+    }
+
     // Phase 2: Replay historical messages
     let replayCount = 0;
     try {
         if (typeof session.getMessages === "function") {
             const history = await session.getMessages();
+            // After the async gap, bail out if a newer session transition
+            // has already superseded this one.
+            if (!isCurrentGeneration()) {
+                unwire();
+                return unwire;
+            }
             if (Array.isArray(history)) {
                 for (const msg of history) {
                     store.ingestReplayMessage(msg);
@@ -447,6 +463,12 @@ export async function wireSession(store, session, opts = {}) {
         }
     } catch (err) {
         await log(`⚠ replay failed (non-fatal): ${String(err)}`);
+    }
+
+    // Re-check generation before draining buffer into the store.
+    if (!isCurrentGeneration()) {
+        unwire();
+        return unwire;
     }
 
     // Phase 3: Drain buffer then switch to direct ingestion.
@@ -467,12 +489,5 @@ export async function wireSession(store, session, opts = {}) {
         `store has ${snap.subagentCount} subagents, ${snap.toolCallCount} tool calls`,
     );
 
-    // Return cleanup function for safe re-wiring across sessions.
-    return function unwire() {
-        disposed = true;
-        for (const { type, handler } of registeredListeners) {
-            try { session.off?.(type, handler); } catch { /* session may already be torn down */ }
-        }
-        registeredListeners.length = 0;
-    };
+    return unwire;
 }

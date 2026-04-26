@@ -214,7 +214,10 @@ export class CopilotWebview {
 
     async show({ reload = false } = {}) {
         if (this._handle) {
-            if (reload) await this._handle.eval("location.reload()", { timeoutMs: 1000 }).catch(() => {});
+            if (reload) {
+                const h = this._handle;
+                await h.eval("location.reload()", { timeoutMs: 1000 }).catch(() => {});
+            }
             return this._handle;
         }
         const handle = await showWebview({

@@ -27,6 +27,9 @@ const store = createEventStore();
 
 /** Cleanup function returned by the most recent wireSession() call. */
 let unwirePrevious = null;
+/** Monotonic counter incremented on each session transition.  wireSession
+ *  compares its captured value to detect stale in-flight startups. */
+let sessionGeneration = 0;
 
 // ── Webview setup ───────────────────────────────────────────────────────────
 
@@ -71,11 +74,24 @@ const session = await joinSession({
             }
             // Reset store so stale data from a prior session is not carried over.
             store.reset();
+            // Bump generation so any in-flight wireSession from a prior start
+            // will detect it is stale and bail out.
+            const gen = ++sessionGeneration;
 
             // Buffered startup: subscribe → replay → merge → live
-            unwirePrevious = await wireSession(store, session, {
+            const unwire = await wireSession(store, session, {
                 log: (msg) => session.log(msg),
+                generation: gen,
+                isCurrentGeneration: () => sessionGeneration === gen,
             });
+
+            // Only install the cleanup handle if we are still the current generation.
+            if (sessionGeneration === gen) {
+                unwirePrevious = unwire;
+            } else {
+                // A newer session transition already happened — clean up immediately.
+                try { unwire(); } catch { /* best-effort */ }
+            }
         },
         onSessionEnd: async () => {
             // Tear down live listeners first, then close webview.
