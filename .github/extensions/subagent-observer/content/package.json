@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.tsx --bundle --outfile=dist/main.js --format=esm --loader:.tsx=tsx --jsx=automatic --jsx-import-source=react",
+    "watch": "npm run build -- --watch"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25"
+  }
+}

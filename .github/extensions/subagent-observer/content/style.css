@@ -1,0 +1,27 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; }
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #1e1e2e;
+  color: #cdd6f4;
+}
+#root { display: flex; flex-direction: column; height: 100%; }
+header {
+  padding: 0.75rem 1.25rem;
+  background: rgba(17, 17, 27, 0.8);
+  border-bottom: 1px solid #45475a;
+  display: flex; align-items: center; gap: 0.75rem;
+}
+header h1 { font-size: 1rem; font-weight: 600; }
+header .badge {
+  font-size: 0.75rem; padding: 0.15em 0.5em;
+  border-radius: 4px; background: #313244; color: #a6adc8;
+}
+main {
+  flex: 1; overflow: auto; padding: 1.25rem;
+}
+.placeholder {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; opacity: 0.5; font-size: 1.1rem;
+  text-align: center; line-height: 1.6;
+}
