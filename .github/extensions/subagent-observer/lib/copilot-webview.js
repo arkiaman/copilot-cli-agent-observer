@@ -30,24 +30,37 @@ const __dirname = import.meta.dirname;
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".woff2": "font/woff2" };
 
 const BRIDGE_JS = `(() => {
-    const ws = new WebSocket("ws://" + location.host);
     const pending = new Map();
     let nextId = 0;
-    const ready = new Promise((r) => ws.addEventListener("open", r, { once: true }));
-    ws.onmessage = async (ev) => {
-        const msg = JSON.parse(ev.data);
-        if ("code" in msg) {
-            let result, error;
-            try {
-                result = await (0, eval)(msg.code);
-                try { JSON.stringify(result); } catch { result = String(result); }
-            } catch (e) { error = e?.stack || String(e); }
-            ws.send(JSON.stringify({ id: msg.id, result, error }));
-        } else {
-            const cb = pending.get(msg.id);
-            if (cb) { pending.delete(msg.id); cb(msg); }
-        }
-    };
+    let ws, ready;
+
+    function connect() {
+        ws = new WebSocket("ws://" + location.host);
+        ready = new Promise((r) => ws.addEventListener("open", r, { once: true }));
+        ws.onmessage = async (ev) => {
+            const msg = JSON.parse(ev.data);
+            if ("code" in msg) {
+                let result, error;
+                try {
+                    result = await (0, eval)(msg.code);
+                    try { JSON.stringify(result); } catch { result = String(result); }
+                } catch (e) { error = e?.stack || String(e); }
+                ws.send(JSON.stringify({ id: msg.id, result, error }));
+            } else {
+                const cb = pending.get(msg.id);
+                if (cb) { pending.delete(msg.id); cb(msg); }
+            }
+        };
+        ws.onclose = () => {
+            // Reject any pending RPC calls so they don't hang.
+            for (const [id, cb] of pending) cb({ id, error: "WebSocket closed" });
+            pending.clear();
+            // Auto-reconnect after a short delay (handles page reload race).
+            setTimeout(connect, 500);
+        };
+    }
+    connect();
+
     window.copilot = new Proxy({}, {
         get: (_, method) => async (...args) => {
             await ready;
@@ -105,6 +118,10 @@ async function showWebview({ dir, title = "Copilot Webview", width = 900, height
     server.on("clientError", (_e, s) => { try { s.destroy(); } catch {} });
     const wss = new WebSocketServer({ server });
     wss.on("connection", (sock) => {
+        // A new page connection replaces any stale socket (e.g., after reload).
+        if (socket && socket !== sock) {
+            try { socket.close(); } catch { /* already closed */ }
+        }
         socket = sock;
         sock.on("message", async (data) => {
             let msg;
@@ -217,7 +234,12 @@ export class CopilotWebview {
         return this._handle.eval(code, opts);
     }
 
-    close() { if (this._handle) this._handle.close(); }
+    close() {
+        if (this._handle) {
+            this._handle.close();
+            this._handle = null;
+        }
+    }
 
     get tools() {
         const { prefix } = this;

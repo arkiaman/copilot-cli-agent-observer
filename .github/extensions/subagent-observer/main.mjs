@@ -23,6 +23,11 @@ import { createEventStore, wireSession } from "./lib/event-store.js";
 
 const store = createEventStore();
 
+// ── Session-lifecycle state ─────────────────────────────────────────────────
+
+/** Cleanup function returned by the most recent wireSession() call. */
+let unwirePrevious = null;
+
 // ── Webview setup ───────────────────────────────────────────────────────────
 
 const webview = new CopilotWebview({
@@ -58,12 +63,29 @@ const observerDumpTool = {
 const session = await joinSession({
     hooks: {
         onSessionStart: async () => {
+            // Tear down previous wiring (if any) so listeners aren't duplicated
+            // across session transitions within the same extension load.
+            if (unwirePrevious) {
+                try { unwirePrevious(); } catch { /* best-effort */ }
+                unwirePrevious = null;
+            }
+            // Reset store so stale data from a prior session is not carried over.
+            store.reset();
+
             // Buffered startup: subscribe → replay → merge → live
-            await wireSession(store, session, {
+            unwirePrevious = await wireSession(store, session, {
                 log: (msg) => session.log(msg),
             });
         },
-        onSessionEnd: webview.close,
+        onSessionEnd: async () => {
+            // Tear down live listeners first, then close webview.
+            if (unwirePrevious) {
+                try { unwirePrevious(); } catch { /* best-effort */ }
+                unwirePrevious = null;
+            }
+            webview.close();
+            await session.log("subagent-observer: session ended, webview closed").catch(() => {});
+        },
     },
     tools: [
         ...webview.tools,

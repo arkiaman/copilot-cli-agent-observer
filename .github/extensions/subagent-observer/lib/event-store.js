@@ -356,11 +356,23 @@ export function createEventStore() {
         };
     }
 
+    /**
+     * Clear all store state.  Used on session boundaries so a new
+     * onSessionStart does not carry stale data from a prior session.
+     */
+    function reset() {
+        subagents.clear();
+        toolCalls.clear();
+        messages.clear();
+        ingestedCount = 0;
+    }
+
     return {
         ingest,
         ingestReplayMessage,
         snapshot,
         dumpSummary,
+        reset,
         /** Expose maps for advanced queries (e.g., webview callbacks) */
         _maps: { subagents, toolCalls, messages },
     };
@@ -378,7 +390,9 @@ export function createEventStore() {
  * @param {ReturnType<typeof createEventStore>} store
  * @param {object} session - The Copilot SDK session object
  * @param {{ log?: (msg: string) => Promise<void> }} [opts]
- * @returns {Promise<void>}
+ * @returns {Promise<() => void>} Cleanup function that removes listeners
+ *   registered by this call.  Calling it is optional but recommended when
+ *   re-wiring (e.g., on a new onSessionStart) to avoid duplicate subscriptions.
  */
 export async function wireSession(store, session, opts = {}) {
     const log = opts.log ?? (() => Promise.resolve());
@@ -387,6 +401,8 @@ export async function wireSession(store, session, opts = {}) {
     /** @type {Array<{ type: string, event: any }>} */
     const buffer = [];
     let buffering = true;
+    /** Set to true by the returned cleanup fn so stale listeners no-op. */
+    let disposed = false;
 
     const eventTypes = [
         "subagent.started",
@@ -401,14 +417,20 @@ export async function wireSession(store, session, opts = {}) {
         "session.idle",
     ];
 
+    /** @type {Array<{ type: string, handler: Function }>} */
+    const registeredListeners = [];
+
     for (const type of eventTypes) {
-        session.on(type, (event) => {
+        const handler = (event) => {
+            if (disposed) return; // guard against stale listeners
             if (buffering) {
                 buffer.push({ type, event });
             } else {
                 store.ingest(type, event);
             }
-        });
+        };
+        session.on(type, handler);
+        registeredListeners.push({ type, handler });
     }
 
     // Phase 2: Replay historical messages
@@ -439,9 +461,18 @@ export async function wireSession(store, session, opts = {}) {
         }
     }
 
+    const snap = store.snapshot().stats;
     await log(
         `subagent-observer: replay=${replayCount} msgs, buffered=${bufferedCount} events, ` +
-        `store has ${store.snapshot().stats.subagentCount} subagents, ` +
-        `${store.snapshot().stats.toolCallCount} tool calls`,
+        `store has ${snap.subagentCount} subagents, ${snap.toolCallCount} tool calls`,
     );
+
+    // Return cleanup function for safe re-wiring across sessions.
+    return function unwire() {
+        disposed = true;
+        for (const { type, handler } of registeredListeners) {
+            try { session.off?.(type, handler); } catch { /* session may already be torn down */ }
+        }
+        registeredListeners.length = 0;
+    };
 }
