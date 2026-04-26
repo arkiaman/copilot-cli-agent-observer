@@ -205,18 +205,22 @@ export function createAssistantMessageRecord(id, overrides = {}) {
  *
  * Returns a **new object** — does not mutate either input.
  *
+ * Tie-break policy: when timestamps are equal the **existing** value is kept
+ * for mutable fields, making the merge idempotent regardless of arrival order.
+ *
  * @template {Record<string, any>} T
  * @param {T} existing
  * @param {Partial<T> & { _lastEventTs?: string }} incoming
  * @param {string[]} [identityFields] - Fields that should not be overwritten
- *   with empty/undefined values once set.
+ *   with empty/undefined values once set.  A current value equal to
+ *   `SYNTHETIC_ROOT_ID` is treated as unset so a real value can replace it.
  * @returns {T}
  */
 export function mergeRecord(existing, incoming, identityFields = []) {
     const identitySet = new Set(identityFields);
     const existingTs = existing._lastEventTs ?? "";
     const incomingTs = incoming._lastEventTs ?? "";
-    const incomingIsNewer = incomingTs >= existingTs;
+    const incomingIsStrictlyNewer = incomingTs > existingTs;
 
     /** @type {Record<string, any>} */
     const merged = { ...existing };
@@ -225,15 +229,18 @@ export function mergeRecord(existing, incoming, identityFields = []) {
         if (key === "id") continue; // never overwrite primary key
 
         if (identitySet.has(key)) {
-            // Set-once: only accept non-empty values, prefer the first non-empty
-            if (!merged[key] && value) {
+            // Set-once: accept non-empty values when the current value is
+            // empty or is the synthetic-root placeholder.
+            const current = merged[key];
+            const isUnset = !current || current === SYNTHETIC_ROOT_ID;
+            if (isUnset && value && value !== SYNTHETIC_ROOT_ID) {
                 merged[key] = value;
             }
             continue;
         }
 
-        // Mutable field: latest timestamp wins
-        if (incomingIsNewer && value !== undefined) {
+        // Mutable field: strictly-newer timestamp wins (equal → keep existing)
+        if (incomingIsStrictlyNewer && value !== undefined) {
             merged[key] = value;
         }
     }
@@ -388,15 +395,24 @@ export function buildTimeline(subagents, toolCalls, messages) {
 
 /**
  * Extract the best "origin" timestamp from a timeline entry for ordering.
+ * Uses explicit casts per branch to satisfy checkJs narrowing.
  * @param {TimelineEntry} entry
  * @returns {string}
  */
 function originTimestamp(entry) {
-    const r = entry.record;
     switch (entry.kind) {
-        case "subagent": return r.startedAt ?? r._lastEventTs;
-        case "toolcall": return r.startedAt ?? r._lastEventTs;
-        case "message":  return r.timestamp ?? r._lastEventTs;
-        default:         return r._lastEventTs ?? "";
+        case "subagent": {
+            /** @type {SubagentRecord} */ const r = entry.record;
+            return r.startedAt ?? r._lastEventTs;
+        }
+        case "toolcall": {
+            /** @type {ToolCallRecord} */ const r = entry.record;
+            return r.startedAt ?? r._lastEventTs;
+        }
+        case "message": {
+            /** @type {AssistantMessageRecord} */ const r = entry.record;
+            return r.timestamp ?? r._lastEventTs;
+        }
+        default: return entry.record._lastEventTs ?? "";
     }
 }
