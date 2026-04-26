@@ -356,6 +356,195 @@ export function buildParentIndex(toolCallMap) {
 }
 
 /**
+ * Build a hierarchy-first execution-tree index for rendering a structural tree.
+ *
+ * Structural rules:
+ *   - The synthetic root is always the single top-level root node.
+ *   - Subagents are represented as structural nodes using their toolCallId.
+ *   - Tool calls whose IDs also exist as subagents are hidden from the tree so
+ *     the spawned subagent becomes the visible branch node.
+ *   - Messages and non-hidden tool calls attach to their nearest structural
+ *     parent using parentToolCallId. Broken parent references are attached to
+ *     the root and marked orphaned.
+ *
+ * @param {Map<string, SubagentRecord>} subagents
+ * @param {Map<string, ToolCallRecord>} toolCalls
+ * @param {Map<string, AssistantMessageRecord>} messages
+ * @returns {{
+ *   rootNodeKey: string,
+ *   nodeParentKeys: Record<string, string | null>,
+ *   childNodeKeys: Record<string, string[]>,
+ *   pathNodeKeys: Record<string, string[]>,
+ *   descendantCounts: Record<string, number>,
+ *   orphanNodeKeys: string[],
+ *   hiddenToolCallIds: string[],
+ * }}
+ */
+export function buildExecutionGraph(subagents, toolCalls, messages) {
+    const rootNodeKey = makeExecutionNodeKey("root", SYNTHETIC_ROOT_ID);
+    const nodeParentKeys = { [rootNodeKey]: null };
+    const childNodeKeys = { [rootNodeKey]: [] };
+    const hiddenToolCallIds = new Set(subagents.keys());
+    const orphanNodeKeys = new Set();
+
+    function ensureChildBucket(key) {
+        if (!childNodeKeys[key]) {
+            childNodeKeys[key] = [];
+        }
+        return childNodeKeys[key];
+    }
+
+    function structuralNodeKeyForToolCallId(toolCallId) {
+        if (!toolCallId || toolCallId === SYNTHETIC_ROOT_ID) {
+            return rootNodeKey;
+        }
+        if (subagents.has(toolCallId)) {
+            return makeExecutionNodeKey("subagent", toolCallId);
+        }
+        if (toolCalls.has(toolCallId) && !hiddenToolCallIds.has(toolCallId)) {
+            return makeExecutionNodeKey("toolcall", toolCallId);
+        }
+        return null;
+    }
+
+    function attachNode(kind, id, parentToolCallId) {
+        const key = makeExecutionNodeKey(kind, id);
+        let parentKey = structuralNodeKeyForToolCallId(parentToolCallId);
+        if (!parentKey) {
+            parentKey = rootNodeKey;
+            if (parentToolCallId && parentToolCallId !== SYNTHETIC_ROOT_ID) {
+                orphanNodeKeys.add(key);
+            }
+        }
+
+        nodeParentKeys[key] = parentKey;
+        ensureChildBucket(parentKey).push(key);
+        ensureChildBucket(key);
+    }
+
+    for (const subagent of subagents.values()) {
+        attachNode("subagent", subagent.id, toolCalls.get(subagent.id)?.parentToolCallId);
+    }
+
+    for (const toolCall of toolCalls.values()) {
+        if (hiddenToolCallIds.has(toolCall.id)) continue;
+        attachNode("toolcall", toolCall.id, toolCall.parentToolCallId);
+    }
+
+    for (const message of messages.values()) {
+        attachNode("message", message.id, message.parentToolCallId);
+    }
+
+    for (const key of Object.keys(childNodeKeys)) {
+        childNodeKeys[key].sort((a, b) => {
+            const tsCompare = compareOriginTimestampDesc(
+                getExecutionNodeOriginTimestamp(a, subagents, toolCalls, messages),
+                getExecutionNodeOriginTimestamp(b, subagents, toolCalls, messages),
+            );
+            return tsCompare !== 0 ? tsCompare : a.localeCompare(b);
+        });
+    }
+
+    // Pre-pass: detect parent-chain cycles and break them by reattaching the
+    // first repeated node to the synthetic root. This keeps malformed data
+    // visible (under root, flagged as orphan) instead of silently dropping
+    // entire branches because a cycle never reaches the root in DFS.
+    for (const startKey of Object.keys(nodeParentKeys)) {
+        if (startKey === rootNodeKey) continue;
+        const visited = new Set();
+        let cur = startKey;
+        while (cur && cur !== rootNodeKey) {
+            if (visited.has(cur)) {
+                const oldParent = nodeParentKeys[cur];
+                if (oldParent && childNodeKeys[oldParent]) {
+                    const siblings = childNodeKeys[oldParent];
+                    const idx = siblings.indexOf(cur);
+                    if (idx !== -1) siblings.splice(idx, 1);
+                }
+                nodeParentKeys[cur] = rootNodeKey;
+                ensureChildBucket(rootNodeKey).push(cur);
+                orphanNodeKeys.add(cur);
+                break;
+            }
+            visited.add(cur);
+            cur = nodeParentKeys[cur] ?? rootNodeKey;
+        }
+    }
+
+    /** @type {Record<string, string[]>} */
+    const pathNodeKeys = { [rootNodeKey]: [rootNodeKey] };
+
+    // Iterative path computation. Walks parent chain into a list, then unrolls
+    // it forward, caching the path for every node touched along the way.
+    function pathFor(key) {
+        if (pathNodeKeys[key]) return pathNodeKeys[key];
+        const chain = [];
+        let cur = key;
+        while (cur !== rootNodeKey && !pathNodeKeys[cur]) {
+            chain.push(cur);
+            cur = nodeParentKeys[cur] ?? rootNodeKey;
+        }
+        let path = pathNodeKeys[cur] ?? [rootNodeKey];
+        for (let i = chain.length - 1; i >= 0; i--) {
+            path = [...path, chain[i]];
+            pathNodeKeys[chain[i]] = path;
+        }
+        return pathNodeKeys[key] ?? path;
+    }
+
+    /** @type {Record<string, number>} */
+    const descendantCounts = {};
+
+    // Iterative post-order DFS from root so a deep tree (or accidentally
+    // deep chain that survived cycle-breaking) cannot blow the JS call stack.
+    {
+        const stack = [rootNodeKey];
+        const enteredChildren = new Set();
+        const order = [];
+        const seenInWalk = new Set();
+        while (stack.length) {
+            const k = stack[stack.length - 1];
+            if (!enteredChildren.has(k)) {
+                enteredChildren.add(k);
+                const children = childNodeKeys[k] ?? [];
+                for (const c of children) {
+                    if (!seenInWalk.has(c)) {
+                        seenInWalk.add(c);
+                        stack.push(c);
+                    }
+                }
+            } else {
+                stack.pop();
+                order.push(k);
+            }
+        }
+        for (const k of order) {
+            const children = childNodeKeys[k] ?? [];
+            let total = 0;
+            for (const c of children) {
+                total += 1 + (descendantCounts[c] ?? 0);
+            }
+            descendantCounts[k] = total;
+        }
+    }
+
+    for (const key of Object.keys(nodeParentKeys)) {
+        pathFor(key);
+        if (!(key in descendantCounts)) descendantCounts[key] = 0;
+    }
+
+    return {
+        rootNodeKey,
+        nodeParentKeys,
+        childNodeKeys,
+        pathNodeKeys,
+        descendantCounts,
+        orphanNodeKeys: [...orphanNodeKeys].sort(),
+        hiddenToolCallIds: [...hiddenToolCallIds].sort(),
+    };
+}
+
+/**
  * Return a sorted timeline of all records across types, ordered by their
  * originating timestamp (startedAt or timestamp).
  *
@@ -414,5 +603,63 @@ function originTimestamp(entry) {
             return r.timestamp ?? r._lastEventTs;
         }
         default: return entry.record._lastEventTs ?? "";
+    }
+}
+
+/**
+ * @param {"root" | "subagent" | "toolcall" | "message"} kind
+ * @param {string} id
+ * @returns {string}
+ */
+function makeExecutionNodeKey(kind, id) {
+    return `${kind}:${id}`;
+}
+
+/**
+ * @param {string} key
+ * @returns {{ kind: string, id: string }}
+ */
+function parseExecutionNodeKey(key) {
+    const separator = key.indexOf(":");
+    return separator === -1
+        ? { kind: key, id: "" }
+        : { kind: key.slice(0, separator), id: key.slice(separator + 1) };
+}
+
+/**
+ * @param {string | undefined} a
+ * @param {string | undefined} b
+ * @returns {number}
+ */
+function compareOriginTimestampDesc(a, b) {
+    const aTime = a ? Date.parse(a) : 0;
+    const bTime = b ? Date.parse(b) : 0;
+    return bTime - aTime;
+}
+
+/**
+ * @param {string} key
+ * @param {Map<string, SubagentRecord>} subagents
+ * @param {Map<string, ToolCallRecord>} toolCalls
+ * @param {Map<string, AssistantMessageRecord>} messages
+ * @returns {string}
+ */
+function getExecutionNodeOriginTimestamp(key, subagents, toolCalls, messages) {
+    const { kind, id } = parseExecutionNodeKey(key);
+    switch (kind) {
+        case "subagent": {
+            const record = subagents.get(id);
+            return record?.startedAt ?? record?._lastEventTs ?? "";
+        }
+        case "toolcall": {
+            const record = toolCalls.get(id);
+            return record?.startedAt ?? record?.completedAt ?? record?._lastEventTs ?? "";
+        }
+        case "message": {
+            const record = messages.get(id);
+            return record?.timestamp ?? record?._lastEventTs ?? "";
+        }
+        default:
+            return "";
     }
 }

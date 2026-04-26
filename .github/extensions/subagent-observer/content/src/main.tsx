@@ -1,11 +1,11 @@
 /**
- * Subagent Observer — ownership-first visualization UI
+ * Subagent Observer — hierarchy-first execution tree UI
  *
  * Read-only dashboard showing:
  *   - Overview cards (stats + subagent status)
- *   - Grouped subagent lanes for ownership-first scanning
+ *   - Default execution tree / tree-table with real parent-child structure
  *   - Secondary flat timeline for raw chronology/debugging
- *   - Detail pane for selected items
+ *   - Detail pane with lineage breadcrumbs for the selected node
  *
  * Data comes from the normalized event store via copilot.getSnapshot().
  * Auto-refreshes every 2 seconds.
@@ -72,11 +72,22 @@ interface TimelineRef {
     id: string;
 }
 
+interface ExecutionGraphSnapshot {
+    rootNodeKey: string;
+    nodeParentKeys: Record<string, string | null>;
+    childNodeKeys: Record<string, string[]>;
+    pathNodeKeys: Record<string, string[]>;
+    descendantCounts: Record<string, number>;
+    orphanNodeKeys: string[];
+    hiddenToolCallIds?: string[];
+}
+
 interface Snapshot {
     subagents: SubagentRecord[];
     toolCalls: ToolCallRecord[];
     messages: AssistantMessageRecord[];
     toolCallsByParent: Record<string, { toolCallId: string; toolName: string; status: string }[]>;
+    executionGraph?: ExecutionGraphSnapshot;
     recentEvents: { ts: string; type: string; summary: string }[];
     timeline: TimelineRef[];
     stats: Stats;
@@ -87,12 +98,13 @@ interface FatalBoundaryState {
 }
 
 type Selection =
+    | { kind: "root"; id: string }
     | { kind: "subagent"; id: string }
     | { kind: "toolcall"; id: string }
     | { kind: "message"; id: string }
     | null;
 
-type ViewMode = "grouped" | "timeline";
+type ViewMode = "tree" | "timeline";
 type StatusKey = "running" | "complete" | "failed";
 type FilterKey =
     | "subagents"
@@ -102,6 +114,7 @@ type FilterKey =
     | "complete"
     | "failed"
     | "root";
+type NodeKind = "root" | "subagent" | "toolcall" | "message";
 
 interface FilterState {
     subagents: boolean;
@@ -114,6 +127,7 @@ interface FilterState {
 }
 
 interface ActivityItem {
+    key: string;
     kind: "subagent" | "toolcall" | "message";
     id: string;
     ts: string;
@@ -121,6 +135,7 @@ interface ActivityItem {
     ownerLabel: string;
     orphan: boolean;
     depth: number;
+    pathKeys: string[];
     status: string;
     icon: string;
     kindLabel: string;
@@ -129,18 +144,38 @@ interface ActivityItem {
     searchText: string;
 }
 
-interface ActivityLane {
+interface ExecutionNode {
+    key: string;
+    kind: NodeKind;
     id: string;
-    kind: "subagent" | "root";
+    ts: string;
+    status: string;
+    icon: string;
+    kindLabel: string;
     title: string;
     subtitle: string;
-    status: string;
-    toolCount: number;
-    messageCount: number;
-    orphanCount: number;
-    lastTs: string;
-    items: ActivityItem[];
     searchText: string;
+    parentKey: string | null;
+    childKeys: string[];
+    pathKeys: string[];
+    descendantCount: number;
+    orphan: boolean;
+}
+
+interface ActivityModel {
+    items: ActivityItem[];
+    nodesByKey: Map<string, ExecutionNode>;
+    rootNodeKey: string;
+    graph: ExecutionGraphSnapshot;
+    subagentMap: Map<string, SubagentRecord>;
+    toolCallMap: Map<string, ToolCallRecord>;
+    messageMap: Map<string, AssistantMessageRecord>;
+}
+
+interface VisibleTreeNode {
+    key: string;
+    matched: boolean;
+    children: VisibleTreeNode[];
 }
 
 const SYNTHETIC_ROOT_ID = "__root__";
@@ -219,19 +254,31 @@ function compareIsoDesc(a?: string, b?: string): number {
     return bTime - aTime;
 }
 
-function selectionKey(selection: Selection): string | null {
-    return selection ? `${selection.kind}:${selection.id}` : null;
-}
-
-function rowSelectionKey(item: ActivityItem): string {
-    return `${item.kind}:${item.id}`;
-}
-
 function escapeHtml(value: string): string {
     return value
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;");
+}
+
+function selectionKey(selection: Selection): string | null {
+    return selection ? `${selection.kind}:${selection.id}` : null;
+}
+
+function itemSelectionKey(item: ActivityItem): string {
+    return `${item.kind}:${item.id}`;
+}
+
+function makeNodeKey(kind: NodeKind, id: string): string {
+    return `${kind}:${id}`;
+}
+
+function parseNodeKey(key: string): { kind: NodeKind; id: string } {
+    const index = key.indexOf(":");
+    return {
+        kind: (index === -1 ? key : key.slice(0, index)) as NodeKind,
+        id: index === -1 ? "" : key.slice(index + 1),
+    };
 }
 
 function renderFatal(message: string, detail?: unknown) {
@@ -253,6 +300,440 @@ function renderFatal(message: string, detail?: unknown) {
         </div>
       </div>
     `;
+}
+
+function stringifyForSearch(value: unknown): string {
+    if (value == null) return "";
+    if (typeof value === "string") return value;
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+}
+
+function nodeOriginTimestamp(kind: NodeKind, id: string, snapshot: Snapshot): string {
+    if (kind === "root") {
+        return latestSnapshotTimestamp(snapshot);
+    }
+    if (kind === "subagent") {
+        const record = snapshot.subagents.find((item) => item.id === id);
+        return record?.startedAt || record?._lastEventTs || "";
+    }
+    if (kind === "toolcall") {
+        const record = snapshot.toolCalls.find((item) => item.id === id);
+        return record?.startedAt || record?.completedAt || record?._lastEventTs || "";
+    }
+    const record = snapshot.messages.find((item) => item.id === id);
+    return record?.timestamp || record?._lastEventTs || "";
+}
+
+function latestSnapshotTimestamp(snapshot: Snapshot): string {
+    return [
+        ...snapshot.subagents.map((record) => record.completedAt || record.failedAt || record.startedAt || record._lastEventTs),
+        ...snapshot.toolCalls.map((record) => record.completedAt || record.startedAt || record._lastEventTs),
+        ...snapshot.messages.map((record) => record.timestamp || record._lastEventTs),
+    ].sort(compareIsoDesc)[0] || "";
+}
+
+function buildFallbackExecutionGraph(snapshot: Snapshot): ExecutionGraphSnapshot {
+    const rootNodeKey = makeNodeKey("root", SYNTHETIC_ROOT_ID);
+    const childNodeKeys: Record<string, string[]> = { [rootNodeKey]: [] };
+    const nodeParentKeys: Record<string, string | null> = { [rootNodeKey]: null };
+    const hiddenToolCallIds = new Set(snapshot.subagents.map((record) => record.id));
+    const subagentIds = new Set(snapshot.subagents.map((record) => record.id));
+    const toolCallIds = new Set(snapshot.toolCalls.map((record) => record.id));
+    const orphanKeys = new Set<string>();
+
+    function ensureBucket(key: string): string[] {
+        if (!childNodeKeys[key]) {
+            childNodeKeys[key] = [];
+        }
+        return childNodeKeys[key];
+    }
+
+    function structuralParentKey(parentToolCallId?: string): string | null {
+        if (!parentToolCallId || parentToolCallId === SYNTHETIC_ROOT_ID) return rootNodeKey;
+        if (subagentIds.has(parentToolCallId)) return makeNodeKey("subagent", parentToolCallId);
+        if (toolCallIds.has(parentToolCallId) && !hiddenToolCallIds.has(parentToolCallId)) {
+            return makeNodeKey("toolcall", parentToolCallId);
+        }
+        return null;
+    }
+
+    function attach(kind: Exclude<NodeKind, "root">, id: string, parentToolCallId?: string) {
+        const key = makeNodeKey(kind, id);
+        let parentKey = structuralParentKey(parentToolCallId);
+        if (!parentKey) {
+            parentKey = rootNodeKey;
+            if (parentToolCallId && parentToolCallId !== SYNTHETIC_ROOT_ID) {
+                orphanKeys.add(key);
+            }
+        }
+        nodeParentKeys[key] = parentKey;
+        ensureBucket(parentKey).push(key);
+        ensureBucket(key);
+    }
+
+    for (const record of snapshot.subagents) {
+        const sourceTool = snapshot.toolCalls.find((tool) => tool.id === record.id);
+        attach("subagent", record.id, sourceTool?.parentToolCallId);
+    }
+    for (const record of snapshot.toolCalls) {
+        if (hiddenToolCallIds.has(record.id)) continue;
+        attach("toolcall", record.id, record.parentToolCallId);
+    }
+    for (const record of snapshot.messages) {
+        attach("message", record.id, record.parentToolCallId);
+    }
+
+    for (const key of Object.keys(childNodeKeys)) {
+        childNodeKeys[key].sort((a, b) => {
+            const aRef = parseNodeKey(a);
+            const bRef = parseNodeKey(b);
+            return compareIsoDesc(
+                nodeOriginTimestamp(aRef.kind, aRef.id, snapshot),
+                nodeOriginTimestamp(bRef.kind, bRef.id, snapshot),
+            ) || a.localeCompare(b);
+        });
+    }
+
+    const pathNodeKeys: Record<string, string[]> = { [rootNodeKey]: [rootNodeKey] };
+    const descendantCounts: Record<string, number> = {};
+
+    function resolvePath(key: string, seen = new Set<string>()): string[] {
+        if (pathNodeKeys[key]) return pathNodeKeys[key];
+        if (seen.has(key)) {
+            orphanKeys.add(key);
+            return [rootNodeKey, key];
+        }
+        seen.add(key);
+        const parentKey = nodeParentKeys[key] || rootNodeKey;
+        const path = [...resolvePath(parentKey, seen), key];
+        pathNodeKeys[key] = path;
+        seen.delete(key);
+        return path;
+    }
+
+    function countDescendants(key: string, seen = new Set<string>()): number {
+        if (key in descendantCounts) return descendantCounts[key];
+        if (seen.has(key)) return 0;
+        seen.add(key);
+        let total = 0;
+        for (const childKey of childNodeKeys[key] || []) {
+            total += 1 + countDescendants(childKey, seen);
+        }
+        seen.delete(key);
+        descendantCounts[key] = total;
+        return total;
+    }
+
+    for (const key of Object.keys(nodeParentKeys)) {
+        resolvePath(key);
+        countDescendants(key);
+    }
+
+    return {
+        rootNodeKey,
+        nodeParentKeys,
+        childNodeKeys,
+        pathNodeKeys,
+        descendantCounts,
+        orphanNodeKeys: [...orphanKeys],
+        hiddenToolCallIds: [...hiddenToolCallIds],
+    };
+}
+
+function getNodeTitleByKey(nodesByKey: Map<string, ExecutionNode>, key: string | null | undefined): string {
+    if (!key) return "Root session";
+    return nodesByKey.get(key)?.title || shortId(parseNodeKey(key).id);
+}
+
+function resolveOwnerFromPath(
+    nodesByKey: Map<string, ExecutionNode>,
+    pathKeys: string[],
+): { ownerId: string; ownerLabel: string } {
+    for (let index = pathKeys.length - 2; index >= 0; index--) {
+        const node = nodesByKey.get(pathKeys[index]);
+        if (!node) continue;
+        if (node.kind === "subagent") {
+            return { ownerId: node.id, ownerLabel: node.title };
+        }
+    }
+    return { ownerId: SYNTHETIC_ROOT_ID, ownerLabel: "Root session" };
+}
+
+function buildActivityModel(snapshot: Snapshot): ActivityModel {
+    const subagentMap = new Map(snapshot.subagents.map((record) => [record.id, record]));
+    const toolCallMap = new Map(snapshot.toolCalls.map((record) => [record.id, record]));
+    const messageMap = new Map(snapshot.messages.map((record) => [record.id, record]));
+    const graph = snapshot.executionGraph ?? buildFallbackExecutionGraph(snapshot);
+    const rootNodeKey = graph.rootNodeKey || makeNodeKey("root", SYNTHETIC_ROOT_ID);
+    const hiddenToolCallIds = new Set(graph.hiddenToolCallIds ?? []);
+    const orphanKeys = new Set(graph.orphanNodeKeys ?? []);
+    const nodesByKey = new Map<string, ExecutionNode>();
+
+    nodesByKey.set(rootNodeKey, {
+        key: rootNodeKey,
+        kind: "root",
+        id: SYNTHETIC_ROOT_ID,
+        ts: latestSnapshotTimestamp(snapshot),
+        status: "complete",
+        icon: "🧭",
+        kindLabel: "root",
+        title: "Root session",
+        subtitle: "Foreground session + orphan activity",
+        searchText: "root session orphan foreground",
+        parentKey: null,
+        childKeys: graph.childNodeKeys[rootNodeKey] ?? [],
+        pathKeys: graph.pathNodeKeys[rootNodeKey] ?? [rootNodeKey],
+        descendantCount: graph.descendantCounts[rootNodeKey] ?? 0,
+        orphan: false,
+    });
+
+    for (const record of snapshot.subagents) {
+        const key = makeNodeKey("subagent", record.id);
+        const title = record.agentDisplayName || record.agentName || shortId(record.id);
+        nodesByKey.set(key, {
+            key,
+            kind: "subagent",
+            id: record.id,
+            ts: record.startedAt || record._lastEventTs,
+            status: record.status,
+            icon: statusIcon(record.status),
+            kindLabel: "agent",
+            title,
+            subtitle: [
+                record.agentName || "subagent",
+                record.totalToolCalls != null ? `${record.totalToolCalls} tools` : "",
+                record.durationMs != null ? fmtDuration(record.durationMs) : "",
+            ].filter(Boolean).join(" · "),
+            searchText: `${title} ${record.agentName} ${record.agentDescription ?? ""}`.toLowerCase(),
+            parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
+            childKeys: graph.childNodeKeys[key] ?? [],
+            pathKeys: graph.pathNodeKeys[key] ?? [rootNodeKey, key],
+            descendantCount: graph.descendantCounts[key] ?? 0,
+            orphan: orphanKeys.has(key),
+        });
+    }
+
+    for (const record of snapshot.toolCalls) {
+        if (hiddenToolCallIds.has(record.id)) continue;
+        const key = makeNodeKey("toolcall", record.id);
+        const title = record.toolName || shortId(record.id);
+        nodesByKey.set(key, {
+            key,
+            kind: "toolcall",
+            id: record.id,
+            ts: record.startedAt || record.completedAt || record._lastEventTs,
+            status: record.status,
+            icon: statusIcon(record.status),
+            kindLabel: "tool",
+            title,
+            subtitle: [
+                record.resultPreview ? previewText(safeText(record.resultPreview), 80) : "",
+            ].filter(Boolean).join(" · "),
+            searchText: `${title} ${stringifyForSearch(record.arguments)} ${record.resultPreview ?? ""}`.toLowerCase(),
+            parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
+            childKeys: graph.childNodeKeys[key] ?? [],
+            pathKeys: graph.pathNodeKeys[key] ?? [rootNodeKey, key],
+            descendantCount: graph.descendantCounts[key] ?? 0,
+            orphan: orphanKeys.has(key),
+        });
+    }
+
+    for (const record of snapshot.messages) {
+        const key = makeNodeKey("message", record.id);
+        const content = safeText(record.content);
+        nodesByKey.set(key, {
+            key,
+            kind: "message",
+            id: record.id,
+            ts: record.timestamp || record._lastEventTs,
+            status: "complete",
+            icon: "💬",
+            kindLabel: "msg",
+            title: previewText(content || "(empty)", 88),
+            subtitle: record.toolRequestCount > 0 ? `${record.toolRequestCount} tool req${record.toolRequestCount === 1 ? "" : "s"}` : "",
+            searchText: `${content} ${record.reasoningText ?? ""}`.toLowerCase(),
+            parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
+            childKeys: graph.childNodeKeys[key] ?? [],
+            pathKeys: graph.pathNodeKeys[key] ?? [rootNodeKey, key],
+            descendantCount: graph.descendantCounts[key] ?? 0,
+            orphan: orphanKeys.has(key),
+        });
+    }
+
+    const items: ActivityItem[] = [];
+
+    for (const ref of [...snapshot.timeline].reverse()) {
+        if (ref.kind === "subagent") {
+            const record = subagentMap.get(ref.id);
+            const node = nodesByKey.get(makeNodeKey("subagent", ref.id));
+            if (!record || !node) continue;
+            const owner = resolveOwnerFromPath(nodesByKey, node.pathKeys);
+            items.push({
+                key: `${ref.kind}:${record.id}`,
+                kind: "subagent",
+                id: record.id,
+                ts: node.ts,
+                ownerId: owner.ownerId,
+                ownerLabel: owner.ownerLabel,
+                orphan: node.orphan,
+                depth: Math.max(0, node.pathKeys.length - 2),
+                pathKeys: node.pathKeys,
+                status: record.status,
+                icon: statusIcon(record.status),
+                kindLabel: "agent",
+                title: node.title,
+                subtitle: node.subtitle,
+                searchText: node.searchText,
+            });
+            continue;
+        }
+
+        if (ref.kind === "toolcall") {
+            const record = toolCallMap.get(ref.id);
+            if (!record) continue;
+            const structuralNode = nodesByKey.get(makeNodeKey("toolcall", ref.id))
+                || nodesByKey.get(makeNodeKey("subagent", ref.id));
+            const pathKeys = structuralNode?.pathKeys ?? [rootNodeKey];
+            const owner = resolveOwnerFromPath(nodesByKey, pathKeys);
+            const orphan = structuralNode?.orphan ?? false;
+            items.push({
+                key: `${ref.kind}:${record.id}`,
+                kind: "toolcall",
+                id: record.id,
+                ts: record.startedAt || record.completedAt || record._lastEventTs,
+                ownerId: owner.ownerId,
+                ownerLabel: owner.ownerLabel,
+                orphan,
+                depth: Math.max(0, pathKeys.length - 2),
+                pathKeys,
+                status: record.status,
+                icon: statusIcon(record.status),
+                kindLabel: "tool",
+                title: record.toolName || shortId(record.id),
+                subtitle: record.resultPreview ? previewText(safeText(record.resultPreview), 72) : "",
+                searchText: `${record.toolName} ${stringifyForSearch(record.arguments)} ${record.resultPreview ?? ""}`.toLowerCase(),
+            });
+            continue;
+        }
+
+        const record = messageMap.get(ref.id);
+        const node = nodesByKey.get(makeNodeKey("message", ref.id));
+        if (!record || !node) continue;
+        const owner = resolveOwnerFromPath(nodesByKey, node.pathKeys);
+        items.push({
+            key: `${ref.kind}:${record.id}`,
+            kind: "message",
+            id: record.id,
+            ts: node.ts,
+            ownerId: owner.ownerId,
+            ownerLabel: owner.ownerLabel,
+            orphan: node.orphan,
+            depth: Math.max(0, node.pathKeys.length - 2),
+            pathKeys: node.pathKeys,
+            status: "complete",
+            icon: "💬",
+            kindLabel: "msg",
+            title: node.title,
+            subtitle: node.subtitle,
+            searchText: node.searchText,
+        });
+    }
+
+    return { items, nodesByKey, rootNodeKey, graph, subagentMap, toolCallMap, messageMap };
+}
+
+function selectionToStructuralNodeKey(selection: Selection, model: ActivityModel): string | null {
+    if (!selection) return null;
+    if (selection.kind === "root") return model.rootNodeKey;
+
+    const directKey = makeNodeKey(selection.kind, selection.id);
+    if (model.nodesByKey.has(directKey)) return directKey;
+
+    const mirroredSubagentKey = makeNodeKey("subagent", selection.id);
+    if (model.nodesByKey.has(mirroredSubagentKey)) return mirroredSubagentKey;
+
+    return null;
+}
+
+function matchesItemFilters(item: ActivityItem, filters: FilterState, query: string): boolean {
+    if (item.kind === "subagent" && !filters.subagents) return false;
+    if (item.kind === "toolcall" && !filters.tools) return false;
+    if (item.kind === "message" && !filters.messages) return false;
+    if (item.kind !== "message" && !filters[normalizeStatus(item.status)]) return false;
+    if (!filters.root && (item.orphan || (item.kind !== "subagent" && item.ownerId === SYNTHETIC_ROOT_ID))) return false;
+    if (!query) return true;
+    return item.searchText.includes(query) || item.ownerLabel.toLowerCase().includes(query);
+}
+
+function matchesNodeFilters(node: ExecutionNode, filters: FilterState, query: string): boolean {
+    if (node.kind === "subagent" && !filters.subagents) return false;
+    if (node.kind === "toolcall" && !filters.tools) return false;
+    if (node.kind === "message" && !filters.messages) return false;
+    if (node.kind !== "root" && node.kind !== "message" && !filters[normalizeStatus(node.status)]) return false;
+    if (!query) return true;
+    return node.searchText.includes(query) || node.title.toLowerCase().includes(query);
+}
+
+function buildVisibleTree(
+    model: ActivityModel,
+    nodeKey: string,
+    filters: FilterState,
+    query: string,
+    hideRootContext = false,
+): VisibleTreeNode | null {
+    const node = model.nodesByKey.get(nodeKey);
+    if (!node) return null;
+
+    const blockedByRootContext = hideRootContext || (
+        !filters.root
+        && node.kind !== "root"
+        && (node.orphan || (node.parentKey === model.rootNodeKey && node.kind !== "subagent"))
+    );
+
+    if (blockedByRootContext) {
+        return null;
+    }
+
+    const children = node.childKeys
+        .map((childKey) => buildVisibleTree(model, childKey, filters, query, blockedByRootContext))
+        .filter((child): child is VisibleTreeNode => child != null);
+
+    const matched = node.kind === "root"
+        ? true
+        : matchesNodeFilters(node, filters, query);
+
+    if (node.kind === "root" || matched || children.length > 0) {
+        return { key: nodeKey, matched, children };
+    }
+
+    return null;
+}
+
+function collectDescendantNodes(model: ActivityModel, nodeKey: string): ExecutionNode[] {
+    const descendants: ExecutionNode[] = [];
+
+    function walk(currentKey: string) {
+        const current = model.nodesByKey.get(currentKey);
+        if (!current) return;
+        for (const childKey of current.childKeys) {
+            const child = model.nodesByKey.get(childKey);
+            if (!child) continue;
+            descendants.push(child);
+            walk(childKey);
+        }
+    }
+
+    walk(nodeKey);
+    return descendants;
+}
+
+function selectionExists(selection: Selection, model: ActivityModel | null): boolean {
+    if (!selection || !model) return true;
+    return selectionToStructuralNodeKey(selection, model) != null;
 }
 
 class FatalBoundary extends React.Component<React.PropsWithChildren, FatalBoundaryState> {
@@ -286,9 +767,9 @@ class FatalBoundary extends React.Component<React.PropsWithChildren, FatalBounda
 }
 
 function OverviewCards({ stats, subagents }: { stats: Stats; subagents: SubagentRecord[] }) {
-    const running = subagents.filter((s) => s.status === "started").length;
-    const completed = subagents.filter((s) => s.status === "completed").length;
-    const failed = subagents.filter((s) => s.status === "failed").length;
+    const running = subagents.filter((subagent) => subagent.status === "started").length;
+    const completed = subagents.filter((subagent) => subagent.status === "completed").length;
+    const failed = subagents.filter((subagent) => subagent.status === "failed").length;
 
     return (
         <section className="overview">
@@ -322,226 +803,6 @@ function OverviewCards({ stats, subagents }: { stats: Stats; subagents: Subagent
     );
 }
 
-function resolveOwnership(
-    parentToolCallId: string | undefined,
-    subagentMap: Map<string, SubagentRecord>,
-    toolCallMap: Map<string, ToolCallRecord>,
-): { ownerId: string; depth: number; orphan: boolean } {
-    if (!parentToolCallId || parentToolCallId === SYNTHETIC_ROOT_ID) {
-        return { ownerId: SYNTHETIC_ROOT_ID, depth: 0, orphan: false };
-    }
-
-    let current = parentToolCallId;
-    let depth = 0;
-    let orphan = false;
-    const seen = new Set<string>();
-
-    while (current && current !== SYNTHETIC_ROOT_ID) {
-        if (seen.has(current)) {
-            orphan = true;
-            break;
-        }
-        seen.add(current);
-
-        if (subagentMap.has(current)) {
-            return { ownerId: current, depth, orphan };
-        }
-
-        const parentTool = toolCallMap.get(current);
-        if (!parentTool) {
-            orphan = true;
-            break;
-        }
-
-        depth++;
-        current = parentTool.parentToolCallId;
-    }
-
-    return { ownerId: SYNTHETIC_ROOT_ID, depth, orphan };
-}
-
-function buildActivityModel(snapshot: Snapshot) {
-    const subagentMap = new Map<string, SubagentRecord>();
-    const toolCallMap = new Map<string, ToolCallRecord>();
-    const messageMap = new Map<string, AssistantMessageRecord>();
-
-    for (const record of snapshot.subagents) subagentMap.set(record.id, record);
-    for (const record of snapshot.toolCalls) toolCallMap.set(record.id, record);
-    for (const record of snapshot.messages) messageMap.set(record.id, record);
-
-    const items: ActivityItem[] = [];
-
-    for (const ref of [...snapshot.timeline].reverse()) {
-        if (ref.kind === "subagent") {
-            const record = subagentMap.get(ref.id);
-            if (!record) continue;
-            const title = record.agentDisplayName || record.agentName || shortId(record.id);
-            const subtitle = `${record.totalToolCalls ?? 0} tool call${record.totalToolCalls === 1 ? "" : "s"} · ${fmtDuration(record.durationMs)}`;
-
-            items.push({
-                kind: "subagent",
-                id: record.id,
-                ts: record.startedAt || record._lastEventTs,
-                ownerId: record.id,
-                ownerLabel: title,
-                orphan: false,
-                depth: 0,
-                status: record.status,
-                icon: statusIcon(record.status),
-                kindLabel: "agent",
-                title,
-                subtitle,
-                searchText: `${title} ${record.agentName} ${record.agentDescription ?? ""}`.toLowerCase(),
-            });
-            continue;
-        }
-
-        if (ref.kind === "toolcall") {
-            const record = toolCallMap.get(ref.id);
-            if (!record) continue;
-            const ownership = resolveOwnership(record.parentToolCallId, subagentMap, toolCallMap);
-            const ownerLabel = ownership.ownerId === SYNTHETIC_ROOT_ID
-                ? (ownership.orphan ? "Orphan chain" : "Root session")
-                : (subagentMap.get(ownership.ownerId)?.agentDisplayName || subagentMap.get(ownership.ownerId)?.agentName || shortId(ownership.ownerId));
-            const title = record.toolName || shortId(record.id);
-            const subtitleParts = [
-                ownership.orphan ? "broken parent chain" : "",
-                record.resultPreview ? previewText(safeText(record.resultPreview), 60) : "",
-            ].filter(Boolean);
-
-            items.push({
-                kind: "toolcall",
-                id: record.id,
-                ts: record.startedAt || record.completedAt || record._lastEventTs,
-                ownerId: ownership.ownerId,
-                ownerLabel,
-                orphan: ownership.orphan,
-                depth: ownership.ownerId === SYNTHETIC_ROOT_ID ? ownership.depth : ownership.depth + 1,
-                status: record.status,
-                icon: statusIcon(record.status),
-                kindLabel: "tool",
-                title,
-                subtitle: subtitleParts.join(" · "),
-                searchText: `${title} ${ownerLabel} ${record.resultPreview ?? ""}`.toLowerCase(),
-            });
-            continue;
-        }
-
-        const record = messageMap.get(ref.id);
-        if (!record) continue;
-        const ownership = resolveOwnership(record.parentToolCallId, subagentMap, toolCallMap);
-        const ownerLabel = ownership.ownerId === SYNTHETIC_ROOT_ID
-            ? (ownership.orphan ? "Orphan chain" : "Root session")
-            : (subagentMap.get(ownership.ownerId)?.agentDisplayName || subagentMap.get(ownership.ownerId)?.agentName || shortId(ownership.ownerId));
-        const content = safeText(record.content);
-        const title = previewText(content || "(empty)", 72);
-        const subtitleParts = [];
-        if (record.toolRequestCount > 0) {
-            subtitleParts.push(`${record.toolRequestCount} tool req${record.toolRequestCount === 1 ? "" : "s"}`);
-        }
-        if (ownership.orphan) {
-            subtitleParts.push("broken parent chain");
-        }
-
-        items.push({
-            kind: "message",
-            id: record.id,
-            ts: record.timestamp || record._lastEventTs,
-            ownerId: ownership.ownerId,
-            ownerLabel,
-            orphan: ownership.orphan,
-            depth: ownership.ownerId === SYNTHETIC_ROOT_ID ? ownership.depth : ownership.depth + 1,
-            status: "complete",
-            icon: "💬",
-            kindLabel: "msg",
-            title,
-            subtitle: subtitleParts.join(" · "),
-            searchText: `${content} ${ownerLabel}`.toLowerCase(),
-        });
-    }
-
-    const laneMap = new Map<string, ActivityLane>();
-    laneMap.set(SYNTHETIC_ROOT_ID, {
-        id: SYNTHETIC_ROOT_ID,
-        kind: "root",
-        title: "Root session",
-        subtitle: "Root-owned + orphan activity",
-        status: "complete",
-        toolCount: 0,
-        messageCount: 0,
-        orphanCount: 0,
-        lastTs: "",
-        items: [],
-        searchText: "root session orphan",
-    });
-
-    for (const subagent of snapshot.subagents) {
-        const title = subagent.agentDisplayName || subagent.agentName || shortId(subagent.id);
-        laneMap.set(subagent.id, {
-            id: subagent.id,
-            kind: "subagent",
-            title,
-            subtitle: `${subagent.agentName || "subagent"} · ${fmtDuration(subagent.durationMs)}`,
-            status: subagent.status,
-            toolCount: 0,
-            messageCount: 0,
-            orphanCount: 0,
-            lastTs: subagent._lastEventTs || subagent.startedAt || "",
-            items: [],
-            searchText: `${title} ${subagent.agentName} ${subagent.agentDescription ?? ""}`.toLowerCase(),
-        });
-    }
-
-    for (const item of items) {
-        if (item.kind === "subagent") continue;
-        const lane = laneMap.get(item.ownerId) ?? laneMap.get(SYNTHETIC_ROOT_ID);
-        if (!lane) continue;
-
-        lane.items.push(item);
-        if (item.kind === "toolcall") lane.toolCount++;
-        if (item.kind === "message") lane.messageCount++;
-        if (item.orphan) lane.orphanCount++;
-        if (!lane.lastTs || compareIsoDesc(item.ts, lane.lastTs) < 0) {
-            lane.lastTs = item.ts;
-        }
-    }
-
-    const rootLane = laneMap.get(SYNTHETIC_ROOT_ID)!;
-    const subagentLanes = [...laneMap.values()]
-        .filter((lane) => lane.id !== SYNTHETIC_ROOT_ID)
-        .sort((a, b) => compareIsoDesc(a.lastTs, b.lastTs));
-
-    const lanes = rootLane.items.length > 0 || rootLane.orphanCount > 0
-        ? [rootLane, ...subagentLanes]
-        : subagentLanes;
-
-    return {
-        items,
-        lanes,
-        subagentMap,
-        toolCallMap,
-        messageMap,
-    };
-}
-
-function matchesItemFilters(item: ActivityItem, filters: FilterState, query: string): boolean {
-    if (item.kind === "subagent" && !filters.subagents) return false;
-    if (item.kind === "toolcall" && !filters.tools) return false;
-    if (item.kind === "message" && !filters.messages) return false;
-    if (item.ownerId === SYNTHETIC_ROOT_ID && !filters.root) return false;
-    if (item.kind !== "message" && !filters[normalizeStatus(item.status)]) return false;
-
-    if (!query) return true;
-    return item.searchText.includes(query);
-}
-
-function laneMatchesFilters(lane: ActivityLane, filters: FilterState, query: string, items: ActivityItem[]): boolean {
-    if (lane.kind === "root" && !filters.root) return false;
-    if (query && lane.searchText.includes(query)) return true;
-    if (lane.kind === "subagent" && filters.subagents && !query) return true;
-    return items.length > 0;
-}
-
 function EventRow({
     item,
     selection,
@@ -553,7 +814,7 @@ function EventRow({
     onSelect: (selection: Selection) => void;
     showOwner: boolean;
 }) {
-    const isSelected = selectionKey(selection) === rowSelectionKey(item);
+    const isSelected = selectionKey(selection) === itemSelectionKey(item);
     const paddingLeft = 12 + (item.depth * 18);
 
     return (
@@ -571,22 +832,117 @@ function EventRow({
             </span>
             <span className={`kind-pill kind-pill-${item.kind}`}>{item.kindLabel}</span>
             {item.orphan && <span className="owner-pill owner-pill-orphan">orphan</span>}
-            {showOwner && item.kind !== "subagent" && (
-                <span className="owner-pill">{item.ownerLabel}</span>
-            )}
+            {showOwner && <span className="owner-pill">{item.ownerLabel}</span>}
             <span className="activity-ts">{fmtTime(item.ts)}</span>
         </button>
     );
 }
 
-function GroupedLaneView({
-    lanes,
+function TreeBranch({
+    branch,
+    model,
+    selection,
+    collapsed,
+    onToggle,
+    onSelect,
+    query,
+}: {
+    branch: VisibleTreeNode;
+    model: ActivityModel;
+    selection: Selection;
+    collapsed: Record<string, boolean>;
+    onToggle: (key: string) => void;
+    onSelect: (selection: Selection) => void;
+    query: string;
+}) {
+    const node = model.nodesByKey.get(branch.key);
+    if (!node) return null;
+
+    const selectedNodeKey = selectionToStructuralNodeKey(selection, model);
+    const selectedPath = selectedNodeKey ? new Set(model.nodesByKey.get(selectedNodeKey)?.pathKeys ?? []) : new Set<string>();
+    const isSelected = selectedNodeKey === node.key;
+    const inSelectedPath = !isSelected && selectedPath.has(node.key);
+    const hasChildren = branch.children.length > 0;
+    const isExpanded = query
+        ? true
+        : selectedPath.has(node.key)
+            ? true
+            : !(collapsed[node.key] ?? false);
+
+    return (
+        <div className={`tree-branch ${node.kind === "root" ? "tree-branch-root" : ""}`}>
+            <div className={`tree-row ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""}`}>
+                <div className="tree-row-main" style={{ paddingLeft: `${10 + ((node.pathKeys.length - 1) * 16)}px` }}>
+                    {hasChildren ? (
+                        <button
+                            type="button"
+                            className="tree-toggle"
+                            onClick={() => onToggle(node.key)}
+                            aria-label={isExpanded ? "Collapse subtree" : "Expand subtree"}
+                        >
+                            {isExpanded ? "▾" : "▸"}
+                        </button>
+                    ) : (
+                        <span className="tree-toggle-spacer" />
+                    )}
+
+                    <button
+                        type="button"
+                        className="tree-select"
+                        onClick={() => onSelect(node.kind === "root" ? { kind: "root", id: SYNTHETIC_ROOT_ID } : { kind: node.kind, id: node.id })}
+                        title={node.title}
+                    >
+                        <span className={`activity-icon ${statusClass(node.status)}`}>{node.icon}</span>
+                        <span className="tree-title-wrap">
+                            <span className="tree-title">{node.title}</span>
+                            {node.subtitle && <span className="tree-subtitle">{node.subtitle}</span>}
+                        </span>
+                    </button>
+                </div>
+
+                <div className="tree-row-meta">
+                    <span className={`kind-pill kind-pill-${node.kind}`}>{node.kindLabel}</span>
+                    {node.kind !== "root" && node.kind !== "message" && (
+                        <span className={`lane-status ${statusClass(node.status)}`}>{normalizeStatus(node.status)}</span>
+                    )}
+                    {node.childKeys.length > 0 && <span className="summary-chip">{node.childKeys.length} child</span>}
+                    {node.descendantCount > node.childKeys.length && (
+                        <span className="summary-chip">{node.descendantCount} total</span>
+                    )}
+                    {node.orphan && <span className="summary-chip summary-chip-warn">orphan</span>}
+                </div>
+
+                <div className="tree-row-time">{fmtTime(node.ts)}</div>
+            </div>
+
+            {hasChildren && isExpanded && (
+                <div className="tree-children">
+                    {branch.children.map((child) => (
+                        <TreeBranch
+                            key={child.key}
+                            branch={child}
+                            model={model}
+                            selection={selection}
+                            collapsed={collapsed}
+                            onToggle={onToggle}
+                            onSelect={onSelect}
+                            query={query}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function ExecutionTreeView({
+    model,
     filters,
     query,
     selection,
     onSelect,
 }: {
-    lanes: ActivityLane[];
+    model: ActivityModel;
     filters: FilterState;
     query: string;
     selection: Selection;
@@ -594,87 +950,36 @@ function GroupedLaneView({
 }) {
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
-    const visible = useMemo(() => {
-        return lanes
-            .map((lane) => {
-                const visibleItems = lane.items.filter((item) => matchesItemFilters(item, filters, query));
-                return { lane, visibleItems };
-            })
-            .filter(({ lane, visibleItems }) => laneMatchesFilters(lane, filters, query, visibleItems));
-    }, [filters, lanes, query]);
+    const visibleTree = useMemo(
+        () => buildVisibleTree(model, model.rootNodeKey, filters, query),
+        [filters, model, query],
+    );
 
-    if (visible.length === 0) {
-        return <div className="activity-empty">No grouped matches for current filters.</div>;
+    const toggleNode = useCallback((key: string) => {
+        setCollapsed((current) => ({ ...current, [key]: !current[key] }));
+    }, []);
+
+    if (!visibleTree) {
+        return <div className="activity-empty">No tree nodes match the current filters.</div>;
     }
 
     return (
-        <div className="lane-list">
-            {visible.map(({ lane, visibleItems }) => {
-                const isCollapsed = collapsed[lane.id] ?? false;
-                const laneSelected = selection?.kind === "subagent" && selection.id === lane.id;
-                const hasSelectedChild = visibleItems.some((item) => rowSelectionKey(item) === selectionKey(selection));
-                const laneClass = [
-                    "lane",
-                    lane.kind === "root" ? "lane-root" : "",
-                    laneSelected || hasSelectedChild ? "selected-lane" : "",
-                ].filter(Boolean).join(" ");
+        <div className="tree-list">
+            <div className="tree-head">
+                <div className="tree-head-cell">Execution tree</div>
+                <div className="tree-head-cell tree-head-meta">Meta</div>
+                <div className="tree-head-cell tree-head-time">Updated</div>
+            </div>
 
-                return (
-                    <section key={lane.id} className={laneClass}>
-                        <div
-                            className="lane-header"
-                            onClick={lane.kind === "subagent" ? () => onSelect({ kind: "subagent", id: lane.id }) : undefined}
-                        >
-                            <div className="lane-title-wrap">
-                                <div className="lane-title-row">
-                                    <span className={`activity-icon ${statusClass(lane.status)}`}>
-                                        {lane.kind === "root" ? "🧭" : statusIcon(lane.status)}
-                                    </span>
-                                    <span className="lane-title">{lane.title}</span>
-                                    {lane.kind === "subagent" && (
-                                        <span className={`lane-status ${statusClass(lane.status)}`}>{normalizeStatus(lane.status)}</span>
-                                    )}
-                                </div>
-                                <div className="lane-subtitle">{lane.subtitle}</div>
-                            </div>
-                            <div className="lane-meta">
-                                <span className="summary-chip">{lane.toolCount} tool</span>
-                                <span className="summary-chip">{lane.messageCount} msg</span>
-                                {lane.orphanCount > 0 && <span className="summary-chip summary-chip-warn">{lane.orphanCount} orphan</span>}
-                                <span className="activity-ts">{fmtTime(lane.lastTs)}</span>
-                                <button
-                                    type="button"
-                                    className="collapse-button"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        setCollapsed((current) => ({ ...current, [lane.id]: !isCollapsed }));
-                                    }}
-                                >
-                                    {isCollapsed ? "Expand" : "Collapse"}
-                                </button>
-                            </div>
-                        </div>
-
-                        {!isCollapsed && (
-                            <div className="lane-body">
-                                {visibleItems.length > 0 ? (
-                                    visibleItems.map((item) => (
-                                        <EventRow
-                                            key={rowSelectionKey(item)}
-                                            item={item}
-                                            selection={selection}
-                                            onSelect={onSelect}
-                                            showOwner={false}
-                                        />
-                                    ))
-                                ) : (
-                                    <div className="lane-empty">No matching child activity in this lane.</div>
-                                )}
-                            </div>
-                        )}
-                    </section>
-                );
-            })}
+            <TreeBranch
+                branch={visibleTree}
+                model={model}
+                selection={selection}
+                collapsed={collapsed}
+                onToggle={toggleNode}
+                onSelect={onSelect}
+                query={query}
+            />
         </div>
     );
 }
@@ -705,7 +1010,7 @@ function FlatTimelineView({
         <div className="flat-list">
             {visible.map((item) => (
                 <EventRow
-                    key={rowSelectionKey(item)}
+                    key={item.key}
                     item={item}
                     selection={selection}
                     onSelect={onSelect}
@@ -733,15 +1038,15 @@ function FilterButton({
 }
 
 function ActivityWorkspace({
-    snapshot,
+    model,
     selection,
     onSelect,
 }: {
-    snapshot: Snapshot;
+    model: ActivityModel;
     selection: Selection;
     onSelect: (selection: Selection) => void;
 }) {
-    const [viewMode, setViewMode] = useState<ViewMode>("grouped");
+    const [viewMode, setViewMode] = useState<ViewMode>("tree");
     const [search, setSearch] = useState("");
     const [filters, setFilters] = useState<FilterState>({
         subagents: true,
@@ -753,7 +1058,6 @@ function ActivityWorkspace({
         root: true,
     });
 
-    const model = useMemo(() => buildActivityModel(snapshot), [snapshot]);
     const query = search.trim().toLowerCase();
 
     const toggleFilter = useCallback((key: FilterKey) => {
@@ -769,10 +1073,10 @@ function ActivityWorkspace({
                     <div className="segmented">
                         <button
                             type="button"
-                            className={`segmented-button ${viewMode === "grouped" ? "active" : ""}`}
-                            onClick={() => setViewMode("grouped")}
+                            className={`segmented-button ${viewMode === "tree" ? "active" : ""}`}
+                            onClick={() => setViewMode("tree")}
                         >
-                            Grouped lanes
+                            Execution tree
                         </button>
                         <button
                             type="button"
@@ -788,7 +1092,7 @@ function ActivityWorkspace({
                             type="search"
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Search messages, tools, owners…"
+                            placeholder="Search branches, tools, messages…"
                         />
                         {search && (
                             <button type="button" className="clear-search" onClick={clearSearch}>
@@ -815,9 +1119,9 @@ function ActivityWorkspace({
                 </div>
             </div>
 
-            {viewMode === "grouped" ? (
-                <GroupedLaneView
-                    lanes={model.lanes}
+            {viewMode === "tree" ? (
+                <ExecutionTreeView
+                    model={model}
                     filters={filters}
                     query={query}
                     selection={selection}
@@ -836,70 +1140,133 @@ function ActivityWorkspace({
     );
 }
 
-function DetailPane({ snapshot, selection }: { snapshot: Snapshot; selection: Selection }) {
-    const subagentMap = new Map(snapshot.subagents.map((record) => [record.id, record]));
-    const toolCallMap = new Map(snapshot.toolCalls.map((record) => [record.id, record]));
+function Breadcrumbs({ pathKeys, model }: { pathKeys: string[]; model: ActivityModel }) {
+    return (
+        <div className="breadcrumb-trail">
+            {pathKeys.map((pathKey, index) => (
+                <React.Fragment key={pathKey}>
+                    <span className={`breadcrumb breadcrumb-${parseNodeKey(pathKey).kind}`}>
+                        {getNodeTitleByKey(model.nodesByKey, pathKey)}
+                    </span>
+                    {index < pathKeys.length - 1 && <span className="breadcrumb-sep">›</span>}
+                </React.Fragment>
+            ))}
+        </div>
+    );
+}
 
-    function ownerLabel(parentToolCallId: string | undefined): string {
-        const ownership = resolveOwnership(parentToolCallId, subagentMap, toolCallMap);
-        if (ownership.ownerId === SYNTHETIC_ROOT_ID) {
-            return ownership.orphan ? "root session (orphan chain)" : "root session";
-        }
-        return subagentMap.get(ownership.ownerId)?.agentDisplayName
-            || subagentMap.get(ownership.ownerId)?.agentName
-            || shortId(ownership.ownerId);
+function ChildNodeList({ nodes }: { nodes: ExecutionNode[] }) {
+    if (nodes.length === 0) return null;
+    return (
+        <div className="child-list">
+            {nodes.slice(0, 20).map((node) => (
+                <div key={node.key} className="child-row">
+                    <span className={statusClass(node.status)}>{node.icon}</span>
+                    <span>{node.title}</span>
+                    <span className={`kind-pill kind-pill-${node.kind}`}>{node.kindLabel}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function DetailPane({
+    snapshot,
+    model,
+    selection,
+}: {
+    snapshot: Snapshot;
+    model: ActivityModel;
+    selection: Selection;
+}) {
+    if (!selection) {
+        return <div className="detail-empty">Select root, branch, tool, or message to inspect details.</div>;
     }
 
-    if (!selection) {
-        return <div className="detail-empty">Select lane, tool, or message to inspect details.</div>;
+    const structuralNodeKey = selectionToStructuralNodeKey(selection, model);
+    const structuralNode = structuralNodeKey ? model.nodesByKey.get(structuralNodeKey) : null;
+    const pathKeys = structuralNode?.pathKeys ?? [model.rootNodeKey];
+    const directChildren = structuralNode ? structuralNode.childKeys.map((childKey) => model.nodesByKey.get(childKey)).filter((node): node is ExecutionNode => node != null) : [];
+    const descendants = structuralNode ? collectDescendantNodes(model, structuralNode.key) : [];
+
+    if (selection.kind === "root") {
+        const rootNode = model.nodesByKey.get(model.rootNodeKey);
+        const rootOwnedChildren = directChildren.filter((node) => node.kind !== "subagent");
+
+        return (
+            <div className="detail-content">
+                <h3>🧭 Root session</h3>
+                <div className="detail-section">
+                    <h4>Lineage</h4>
+                    <Breadcrumbs pathKeys={rootNode?.pathKeys ?? [model.rootNodeKey]} model={model} />
+                </div>
+                <FieldTable fields={[
+                    ["Top-level branches", String(rootNode?.childKeys.length ?? 0)],
+                    ["Descendants", String(rootNode?.descendantCount ?? 0)],
+                    ["Root-owned nodes", String(rootOwnedChildren.length)],
+                    ["Orphan nodes", String(model.graph.orphanNodeKeys.length)],
+                    ["Last activity", fmtTime(rootNode?.ts)],
+                ]} />
+
+                {directChildren.length > 0 && (
+                    <div className="detail-section">
+                        <h4>Top-level branches</h4>
+                        <ChildNodeList nodes={directChildren} />
+                    </div>
+                )}
+            </div>
+        );
     }
 
     if (selection.kind === "subagent") {
         const record = snapshot.subagents.find((subagent) => subagent.id === selection.id);
-        if (!record) return <div className="detail-empty">Subagent not found.</div>;
+        if (!record || !structuralNode) return <div className="detail-empty">Subagent not found.</div>;
 
-        const ownedTools = snapshot.toolCalls.filter((tool) => resolveOwnership(tool.parentToolCallId, subagentMap, toolCallMap).ownerId === record.id);
-        const ownedMessages = snapshot.messages.filter((message) => resolveOwnership(message.parentToolCallId, subagentMap, toolCallMap).ownerId === record.id);
+        const subtreeTools = descendants.filter((node) => node.kind === "toolcall");
+        const subtreeMessages = descendants.filter((node) => node.kind === "message");
 
         return (
             <div className="detail-content">
                 <h3>{statusIcon(record.status)} {record.agentDisplayName || record.agentName}</h3>
+                <div className="detail-section">
+                    <h4>Lineage</h4>
+                    <Breadcrumbs pathKeys={pathKeys} model={model} />
+                </div>
                 <FieldTable fields={[
                     ["ID", shortId(record.id)],
                     ["Agent Name", record.agentName],
                     ["Status", record.status],
+                    ["Parent", getNodeTitleByKey(model.nodesByKey, structuralNode.parentKey)],
                     ["Started", fmtTime(record.startedAt)],
                     ["Completed", fmtTime(record.completedAt)],
                     ["Failed", record.failedAt ? fmtTime(record.failedAt) : undefined],
                     ["Duration", fmtDuration(record.durationMs)],
-                    ["Owned Tools", ownedTools.length.toString()],
-                    ["Owned Messages", ownedMessages.length.toString()],
+                    ["Direct children", String(structuralNode.childKeys.length)],
+                    ["Descendants", String(structuralNode.descendantCount)],
+                    ["Tree tools", String(subtreeTools.length)],
+                    ["Tree messages", String(subtreeMessages.length)],
                     ["Tool Calls", record.totalToolCalls?.toString()],
                     ["Tokens", record.totalTokens?.toString()],
                 ]} />
+
                 {record.agentDescription && (
                     <div className="detail-section">
                         <h4>Description</h4>
                         <p className="detail-text">{record.agentDescription}</p>
                     </div>
                 )}
+
+                {directChildren.length > 0 && (
+                    <div className="detail-section">
+                        <h4>Direct children</h4>
+                        <ChildNodeList nodes={directChildren} />
+                    </div>
+                )}
+
                 {record.error && (
                     <div className="detail-section detail-error">
                         <h4>Error</h4>
                         <pre className="detail-pre">{record.error}</pre>
-                    </div>
-                )}
-                {ownedTools.length > 0 && (
-                    <div className="detail-section">
-                        <h4>Owned Tools</h4>
-                        <div className="child-list">
-                            {ownedTools.slice(0, 20).map((tool) => (
-                                <div key={tool.id} className="child-row">
-                                    <span className={statusClass(tool.status)}>{statusIcon(tool.status)}</span>
-                                    <span>{tool.toolName || shortId(tool.id)}</span>
-                                </div>
-                            ))}
-                        </div>
                     </div>
                 )}
             </div>
@@ -913,26 +1280,48 @@ function DetailPane({ snapshot, selection }: { snapshot: Snapshot; selection: Se
         return (
             <div className="detail-content">
                 <h3>{statusIcon(record.status)} {record.toolName || "Tool Call"}</h3>
+                <div className="detail-section">
+                    <h4>Lineage</h4>
+                    <Breadcrumbs pathKeys={pathKeys} model={model} />
+                </div>
                 <FieldTable fields={[
                     ["ID", shortId(record.id)],
                     ["Tool", record.toolName],
-                    ["Owner Lane", ownerLabel(record.parentToolCallId)],
+                    ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
                     ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
                     ["Status", record.status],
                     ["Success", record.success != null ? String(record.success) : undefined],
                     ["Started", fmtTime(record.startedAt)],
                     ["Completed", fmtTime(record.completedAt)],
+                    ["Direct children", structuralNode ? String(structuralNode.childKeys.length) : undefined],
+                    ["Descendants", structuralNode ? String(structuralNode.descendantCount) : undefined],
                 ]} />
+
+                {model.subagentMap.has(record.id) && (
+                    <div className="detail-section">
+                        <h4>Spawned branch</h4>
+                        <p className="detail-text">This task tool call is represented as a subagent branch in the execution tree.</p>
+                    </div>
+                )}
+
                 {record.arguments != null && (
                     <div className="detail-section">
                         <h4>Arguments</h4>
                         <pre className="detail-pre">{typeof record.arguments === "string" ? record.arguments : JSON.stringify(record.arguments, null, 2)}</pre>
                     </div>
                 )}
+
                 {record.resultPreview != null && (
                     <div className="detail-section">
                         <h4>Result Preview</h4>
                         <pre className="detail-pre">{record.resultPreview}</pre>
+                    </div>
+                )}
+
+                {directChildren.length > 0 && (
+                    <div className="detail-section">
+                        <h4>Direct children</h4>
+                        <ChildNodeList nodes={directChildren} />
                     </div>
                 )}
             </div>
@@ -945,19 +1334,25 @@ function DetailPane({ snapshot, selection }: { snapshot: Snapshot; selection: Se
     return (
         <div className="detail-content">
             <h3>💬 Assistant Message</h3>
+            <div className="detail-section">
+                <h4>Lineage</h4>
+                <Breadcrumbs pathKeys={pathKeys} model={model} />
+            </div>
             <FieldTable fields={[
                 ["ID", shortId(record.id)],
-                ["Owner Lane", ownerLabel(record.parentToolCallId)],
+                ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
                 ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
                 ["Tool Requests", record.toolRequestCount.toString()],
                 ["Time", fmtTime(record.timestamp)],
             ]} />
+
             {record.content && (
                 <div className="detail-section">
                     <h4>Content</h4>
                     <pre className="detail-pre">{record.content.slice(0, 2000)}{record.content.length > 2000 ? "\n…(truncated)" : ""}</pre>
                 </div>
             )}
+
             <ReasoningSection availability={record.reasoningAvailability} text={record.reasoningText} />
         </div>
     );
@@ -1043,6 +1438,14 @@ function App() {
         return () => clearInterval(id);
     }, [refresh]);
 
+    const model = useMemo(() => (snapshot ? buildActivityModel(snapshot) : null), [snapshot]);
+
+    useEffect(() => {
+        if (selection && !selectionExists(selection, model)) {
+            setSelection(null);
+        }
+    }, [model, selection]);
+
     const hasData = snapshot && snapshot.stats.ingestedEventCount > 0;
 
     return (
@@ -1073,17 +1476,17 @@ function App() {
                 </main>
             )}
 
-            {!error && snapshot && hasData && (
+            {!error && snapshot && hasData && model && (
                 <>
                     <OverviewCards stats={snapshot.stats} subagents={snapshot.subagents} />
                     <div className="panels">
                         <section className="panel-list">
                             <div className="panel-header">Activity</div>
-                            <ActivityWorkspace snapshot={snapshot} selection={selection} onSelect={setSelection} />
+                            <ActivityWorkspace model={model} selection={selection} onSelect={setSelection} />
                         </section>
                         <section className="panel-detail">
                             <div className="panel-header">Details</div>
-                            <DetailPane snapshot={snapshot} selection={selection} />
+                            <DetailPane snapshot={snapshot} model={model} selection={selection} />
                         </section>
                     </div>
                 </>
