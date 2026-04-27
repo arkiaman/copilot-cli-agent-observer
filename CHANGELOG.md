@@ -4,7 +4,7 @@ All notable changes to Copilot CLI Agent Observer are documented here.
 
 This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 
-## [0.1.0-alpha] — 2025-04-27
+## [0.1.0-alpha] — 2026-04-27
 
 First public alpha release — read-only observability for GitHub Copilot CLI agent sessions.
 
