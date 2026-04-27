@@ -21802,7 +21802,12 @@ function summarizeArgs(toolName, args) {
   const obj = parsed;
   const byTool = {
     grep: { keys: ["pattern", "query"] },
-    view: { keys: ["path", "file"], transform: shortPath },
+    view: { keys: ["path", "file"], transform: (v, o) => {
+      const base = shortPath(v);
+      const range = o["view_range"];
+      if (Array.isArray(range) && range.length === 2) return `${base}:${range[0]}\u2013${range[1]}`;
+      return base;
+    } },
     glob: { keys: ["pattern", "path"], transform: (v) => shortPath(v) },
     powershell: { keys: ["command", "script"] },
     bash: { keys: ["command", "script"] }
@@ -21812,14 +21817,21 @@ function summarizeArgs(toolName, args) {
   for (const k of keys) {
     if (typeof obj[k] === "string" && obj[k]) {
       const raw = safeText(obj[k]);
-      const display = spec?.transform ? spec.transform(raw) : raw;
-      return previewText(display, 80);
+      const display = spec?.transform ? spec.transform(raw, obj) : raw;
+      return previewText(display, 100);
     }
   }
   for (const v of Object.values(obj)) {
-    if (typeof v === "string" && v.trim()) return previewText(safeText(v), 80);
+    if (typeof v === "string" && v.trim()) return previewText(safeText(v), 100);
   }
   return "";
+}
+function resultSnippet(toolName, resultPreview) {
+  if (!resultPreview) return "";
+  const text = safeText(resultPreview);
+  if (!text) return "";
+  const firstLine = text.split("\n").find((l) => l.trim()) ?? text;
+  return previewText(firstLine, 120);
 }
 function ExpandablePre({ text, limit = 500, className = "detail-pre" }) {
   const [expanded, setExpanded] = (0, import_react.useState)(false);
@@ -22241,7 +22253,7 @@ function buildActivityModel(snapshot) {
       const { kind, id } = parseNodeKey(ck);
       return kind === "toolcall" ? toolCallMap.get(id)?.toolName : void 0;
     }).filter((n) => Boolean(n));
-    const displayTitle = content ? previewText(content, 88) : childToolNames.length > 0 ? `\u2192 ${childToolNames.slice(0, 3).join(", ")}${childToolNames.length > 3 ? ` (+${childToolNames.length - 3})` : ""}` : "(empty)";
+    const displayTitle = content ? previewText(content, 200) : childToolNames.length > 0 ? `\u2192 ${childToolNames.slice(0, 4).join(", ")}${childToolNames.length > 4 ? ` (+${childToolNames.length - 4})` : ""}` : "(empty)";
     nodesByKey.set(key, {
       key,
       kind: "message",
@@ -22307,7 +22319,8 @@ function buildActivityModel(snapshot) {
         icon: statusIcon(record2.status),
         kindLabel: "tool",
         title: record2.toolName || shortId(record2.id),
-        subtitle: summarizeArgs(record2.toolName, record2.arguments) || (record2.resultPreview ? previewText(safeText(record2.resultPreview), 72) : ""),
+        subtitle: summarizeArgs(record2.toolName, record2.arguments) || (record2.resultPreview ? previewText(safeText(record2.resultPreview), 100) : ""),
+        resultLine: summarizeArgs(record2.toolName, record2.arguments) ? resultSnippet(record2.toolName, record2.resultPreview) : "",
         searchText: `${record2.toolName} ${stringifyForSearch(record2.arguments)} ${record2.resultPreview ?? ""}`.toLowerCase()
       });
       continue;
@@ -22484,7 +22497,8 @@ function EventRow({
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `activity-icon ${statusClass(item.status)}`, children: item.icon }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "event-main", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "event-title", children: item.title }),
-          item.subtitle && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "event-subtitle", children: item.subtitle })
+          item.subtitle && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "event-subtitle", children: item.subtitle }),
+          item.resultLine && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "event-result-line", children: item.resultLine })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `kind-pill kind-pill-${item.kind}`, children: item.kindLabel }),
         item.orphan && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "owner-pill owner-pill-orphan", children: "orphan" }),

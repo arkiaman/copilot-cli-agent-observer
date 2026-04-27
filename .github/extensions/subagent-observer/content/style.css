@@ -572,6 +572,15 @@ main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.event-result-line {
+  font-size: 0.7rem;
+  color: #6c7086;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: "Cascadia Code", "Fira Code", monospace;
+}
 .kind-pill {
   text-transform: uppercase;
   letter-spacing: 0.04em;

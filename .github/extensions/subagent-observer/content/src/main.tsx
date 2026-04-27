@@ -141,6 +141,7 @@ interface ActivityItem {
     kindLabel: string;
     title: string;
     subtitle: string;
+    resultLine?: string;
     searchText: string;
 }
 
@@ -269,9 +270,14 @@ function summarizeArgs(toolName: string, args: unknown): string {
     const parsed = tryParseJSON(args) ?? args;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
     const obj = parsed as Record<string, unknown>;
-    const byTool: Record<string, { keys: string[]; transform?: (v: string) => string }> = {
+    const byTool: Record<string, { keys: string[]; transform?: (v: string, obj: Record<string, unknown>) => string }> = {
         grep:       { keys: ["pattern", "query"] },
-        view:       { keys: ["path", "file"], transform: shortPath },
+        view:       { keys: ["path", "file"], transform: (v, o) => {
+            const base = shortPath(v);
+            const range = o["view_range"];
+            if (Array.isArray(range) && range.length === 2) return `${base}:${range[0]}–${range[1]}`;
+            return base;
+        }},
         glob:       { keys: ["pattern", "path"], transform: (v) => shortPath(v) },
         powershell: { keys: ["command", "script"] },
         bash:       { keys: ["command", "script"] },
@@ -281,15 +287,24 @@ function summarizeArgs(toolName: string, args: unknown): string {
     for (const k of keys) {
         if (typeof obj[k] === "string" && obj[k]) {
             const raw = safeText(obj[k] as string);
-            const display = spec?.transform ? spec.transform(raw) : raw;
-            return previewText(display, 80);
+            const display = spec?.transform ? spec.transform(raw, obj) : raw;
+            return previewText(display, 100);
         }
     }
     // generic: first string value
     for (const v of Object.values(obj)) {
-        if (typeof v === "string" && v.trim()) return previewText(safeText(v), 80);
+        if (typeof v === "string" && v.trim()) return previewText(safeText(v), 100);
     }
     return "";
+}
+
+function resultSnippet(toolName: string, resultPreview: string | undefined): string {
+    if (!resultPreview) return "";
+    const text = safeText(resultPreview);
+    if (!text) return "";
+    // For tools where args already describe input well, show first line of result
+    const firstLine = text.split("\n").find((l) => l.trim()) ?? text;
+    return previewText(firstLine, 120);
 }
 
 function ExpandablePre({ text, limit = 500, className = "detail-pre" }: { text: string; limit?: number; className?: string }) {
@@ -778,9 +793,9 @@ function buildActivityModel(snapshot: Snapshot): ActivityModel {
             .map((ck) => { const { kind, id } = parseNodeKey(ck); return kind === "toolcall" ? toolCallMap.get(id)?.toolName : undefined; })
             .filter((n): n is string => Boolean(n));
         const displayTitle = content
-            ? previewText(content, 88)
+            ? previewText(content, 200)
             : childToolNames.length > 0
-                ? `→ ${childToolNames.slice(0, 3).join(", ")}${childToolNames.length > 3 ? ` (+${childToolNames.length - 3})` : ""}`
+                ? `→ ${childToolNames.slice(0, 4).join(", ")}${childToolNames.length > 4 ? ` (+${childToolNames.length - 4})` : ""}`
                 : "(empty)";
         nodesByKey.set(key, {
             key,
@@ -852,7 +867,10 @@ function buildActivityModel(snapshot: Snapshot): ActivityModel {
                 kindLabel: "tool",
                 title: record.toolName || shortId(record.id),
                 subtitle: summarizeArgs(record.toolName, record.arguments) ||
-                    (record.resultPreview ? previewText(safeText(record.resultPreview), 72) : ""),
+                    (record.resultPreview ? previewText(safeText(record.resultPreview), 100) : ""),
+                resultLine: summarizeArgs(record.toolName, record.arguments)
+                    ? resultSnippet(record.toolName, record.resultPreview)
+                    : "",
                 searchText: `${record.toolName} ${stringifyForSearch(record.arguments)} ${record.resultPreview ?? ""}`.toLowerCase(),
             });
             continue;
@@ -1074,6 +1092,7 @@ function EventRow({
             <span className="event-main">
                 <span className="event-title">{item.title}</span>
                 {item.subtitle && <span className="event-subtitle">{item.subtitle}</span>}
+                {item.resultLine && <span className="event-result-line">{item.resultLine}</span>}
             </span>
             <span className={`kind-pill kind-pill-${item.kind}`}>{item.kindLabel}</span>
             {item.orphan && <span className="owner-pill owner-pill-orphan">orphan</span>}
