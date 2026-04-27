@@ -54,10 +54,10 @@ This is an **alpha release** focused on **read-only observability**:
 From any Copilot CLI session:
 
 ```
-/plugin install <owner>/agent-observer
+/plugin install Rogn/copilot-cli-agent-observer
 ```
 
-> Replace `<owner>` with the GitHub org or user that hosts the published repo.
+Published repo: `Rogn/copilot-cli-agent-observer`
 
 This clones the repo into your Copilot CLI extensions directory and runs bootstrap automatically on next session start.
 
@@ -69,10 +69,10 @@ Clone into the Copilot CLI extensions directory:
 # Find your extensions directory (typically ~/.copilot/extensions/ or similar)
 cd <copilot-extensions-dir>
 
-git clone https://github.com/<owner>/agent-observer.git
+git clone https://github.com/Rogn/copilot-cli-agent-observer.git agent-observer
 ```
 
-> Replace `<owner>` with the published repo owner and `<copilot-extensions-dir>` with your local Copilot CLI extensions path.
+Replace `<copilot-extensions-dir>` with your local Copilot CLI extensions path.
 
 The extension self-bootstraps on first load — it runs `npm install` automatically if dependencies are missing.
 
@@ -182,9 +182,9 @@ The native window is powered by [`@webviewjs/webview`](https://github.com/webvie
 
 | Platform | Webview engine | Status |
 |---|---|---|
-| **Windows** (x64) | WebView2 (Edge/Chromium) | ✅ Fully supported |
-| **macOS** (arm64/x64) | WKWebView (Safari) | ✅ Fully supported |
-| **Linux** (x64) | WebKitGTK | ⚠️ Requires `libwebkit2gtk-4.0` installed |
+| **Windows** (x64) | WebView2 (Edge/Chromium) | ✅ Known-working |
+| **macOS** (arm64/x64) | WKWebView (Safari) | ⚠️ Untested in this alpha |
+| **Linux** (x64) | WebKitGTK | ⚠️ Untested in this alpha; likely requires `libwebkit2gtk-4.0` |
 | **Other** | — | ❌ Not supported |
 
 ### Known limitations
