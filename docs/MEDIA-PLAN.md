@@ -95,7 +95,7 @@ development." This is self-contained, public-safe, and tells a compelling meta-s
 | Hero screenshot | `hero-overview.png` | `docs/images/` | ✅ Captured (Playwright + mock data) |
 | Timeline screenshot | `timeline-feed.png` | `docs/images/` | ✅ Captured (Playwright + mock data) |
 | Detail screenshot | `detail-inspection.png` | `docs/images/` | ✅ Captured (Playwright + mock data) |
-| Demo walkthrough | `demo-walkthrough.gif` | `docs/media/` | ⏳ Requires manual screen recording — see CAPTURE-GUIDE.md |
+| Demo walkthrough | `demo-walkthrough.gif` | `docs/media/` | ✅ Captured (Playwright + mock data, assembled with ImageMagick) |
 
 ## Existing assets disposition
 
@@ -121,7 +121,7 @@ replacing.
 3. ✅ Rebuild UI (`npm run build` in content/)
 4. ✅ Run sanitized demo workflow (Playwright + mock data server)
 5. ✅ Capture 3 screenshots
-6. ⏳ Capture 1 GIF (requires manual screen recording — see `docs/media/CAPTURE-GUIDE.md`)
+6. ✅ Capture 1 GIF (Playwright + mock data + ImageMagick assembly)
 7. ✅ Place in `docs/images/` and `docs/media/`
 8. ✅ Delete root `obs-*.png` files
 9. ✅ Reference from README

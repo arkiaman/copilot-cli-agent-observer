@@ -125,7 +125,9 @@ The agent has access to the `agent_observer_show` tool, so natural-language requ
 
 ![Detail inspection — drill into a Code Review Agent with full context](docs/images/detail-inspection.png)
 
-<!-- Demo walkthrough GIF will be added when captured manually — see docs/media/CAPTURE-GUIDE.md -->
+### Demo walkthrough
+
+![Demo walkthrough — observer populating with agents, expanding tool calls, and inspecting details](docs/media/demo-walkthrough.gif)
 
 ---
 
