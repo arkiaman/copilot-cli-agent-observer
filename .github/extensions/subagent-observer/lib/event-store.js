@@ -16,8 +16,8 @@
  * @module event-store
  */
 
-import { existsSync } from "node:fs";
-import { open, readFile, stat } from "node:fs/promises";
+import { createReadStream, existsSync } from "node:fs";
+import { open, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -53,15 +53,17 @@ export function createEventStore() {
     let ingestedCount = 0;
     /** Event IDs already seen from persisted log / live bus for dedupe. */
     const seenEventIds = new Set();
-    /** Monotonic revision for snapshot/json cache invalidation. */
+    /** Monotonic revision for structural snapshot/json cache invalidation. */
     let revision = 0;
-    let cachedSnapshotRevision = -1;
-    let cachedSnapshot = null;
+    let cachedSnapshotCoreRevision = -1;
+    let cachedSnapshotCore = null;
     let cachedSnapshotJsonRevision = -1;
     let cachedSnapshotJson = "";
+    let lastStructuralIngestedCount = 0;
 
     function markDirty() {
         revision += 1;
+        lastStructuralIngestedCount = ingestedCount;
     }
 
     // ── Live-event ingestors ────────────────────────────────────────────
@@ -302,9 +304,9 @@ export function createEventStore() {
 
     // ── Snapshot (read-only view of current state) ──────────────────────
 
-    function snapshot() {
-        if (cachedSnapshot && cachedSnapshotRevision === revision) {
-            return cachedSnapshot;
+    function snapshotCore() {
+        if (cachedSnapshotCore && cachedSnapshotCoreRevision === revision) {
+            return cachedSnapshotCore;
         }
 
         const parentIndex = buildParentIndex(toolCalls);
@@ -362,7 +364,7 @@ export function createEventStore() {
             };
         });
 
-        cachedSnapshot = {
+        cachedSnapshotCore = {
             subagents: [...subagents.values()],
             toolCalls: [...toolCalls.values()],
             messages: [...messages.values()],
@@ -370,23 +372,54 @@ export function createEventStore() {
             executionGraph,
             recentEvents,
             timeline: timeline.map((e) => ({ kind: e.kind, id: e.record.id })),
-            stats: {
+            statsBase: {
                 subagentCount: subagents.size,
                 toolCallCount: toolCalls.size,
                 messageCount: messages.size,
-                ingestedEventCount: ingestedCount,
                 orphanToolCallCount: orphanToolCallIds.size,
             },
         };
-        cachedSnapshotRevision = revision;
-        return cachedSnapshot;
+        cachedSnapshotCoreRevision = revision;
+        return cachedSnapshotCore;
+    }
+
+    function snapshot() {
+        const core = snapshotCore();
+        return {
+            subagents: core.subagents,
+            toolCalls: core.toolCalls,
+            messages: core.messages,
+            toolCallsByParent: core.toolCallsByParent,
+            executionGraph: core.executionGraph,
+            recentEvents: core.recentEvents,
+            timeline: core.timeline,
+            stats: {
+                ...core.statsBase,
+                ingestedEventCount: ingestedCount,
+            },
+        };
     }
 
     function snapshotJson() {
         if (cachedSnapshotJsonRevision === revision && cachedSnapshotJson) {
             return cachedSnapshotJson;
         }
-        cachedSnapshotJson = JSON.stringify(snapshot());
+        const core = snapshotCore();
+        cachedSnapshotJson = JSON.stringify({
+            subagents: core.subagents,
+            toolCalls: core.toolCalls,
+            messages: core.messages,
+            toolCallsByParent: core.toolCallsByParent,
+            executionGraph: core.executionGraph,
+            recentEvents: core.recentEvents,
+            timeline: core.timeline,
+            // Keep webview payload stable across passive-only events so
+            // progress/idle diagnostics do not force full reparse/re-render.
+            stats: {
+                ...core.statsBase,
+                ingestedEventCount: lastStructuralIngestedCount,
+            },
+        });
         cachedSnapshotJsonRevision = revision;
         return cachedSnapshotJson;
     }
@@ -440,9 +473,10 @@ export function createEventStore() {
         messages.clear();
         ingestedCount = 0;
         seenEventIds.clear();
+        lastStructuralIngestedCount = 0;
         markDirty();
-        cachedSnapshot = null;
-        cachedSnapshotRevision = -1;
+        cachedSnapshotCore = null;
+        cachedSnapshotCoreRevision = -1;
         cachedSnapshotJson = "";
         cachedSnapshotJsonRevision = -1;
     }
@@ -578,10 +612,26 @@ export async function wireSession(store, session, opts = {}) {
 
     async function replayFromEventLog() {
         if (!eventsPath || !existsSync(eventsPath)) return false;
-        const text = await readFile(eventsPath, "utf8");
-        const { count, remainder } = await ingestPersistedChunk(text);
+        let count = 0;
+        let remainder = "";
+        let bytesRead = 0;
+        const stream = createReadStream(eventsPath, { encoding: "utf8" });
+        try {
+            for await (const chunk of stream) {
+                if (disposed || !isCurrentGeneration()) {
+                    stream.destroy();
+                    break;
+                }
+                bytesRead += Buffer.byteLength(chunk, "utf8");
+                const result = await ingestPersistedChunk(remainder + chunk);
+                count += result.count;
+                remainder = result.remainder;
+            }
+        } finally {
+            stream.destroy();
+        }
         replayCount += count;
-        tailedBytes = Buffer.byteLength(text, "utf8");
+        tailedBytes = bytesRead;
         tailRemainder = remainder;
         return true;
     }
