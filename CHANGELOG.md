@@ -20,6 +20,10 @@ First public alpha release — read-only observability for GitHub Copilot CLI ag
 - **Slash command** — `/agent-observer` to open the dashboard window
 - **Tools** — `agent_observer_show`, `agent_observer_close`, `observer_dump_summary`
 
+### Fixed
+
+- **Plugin packaging** — add a root `plugin.json` manifest so `/plugin install Rogn/copilot-cli-agent-observer` is recognized as a Copilot CLI plugin repository
+
 ### Architecture
 
 - Normalized event data model with buffered startup merge

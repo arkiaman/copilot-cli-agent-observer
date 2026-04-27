@@ -59,7 +59,7 @@ From any Copilot CLI session:
 
 Published repo: `Rogn/copilot-cli-agent-observer`
 
-This clones the repo into your Copilot CLI extensions directory and runs bootstrap automatically on next session start.
+This works via the repo's root `plugin.json` manifest. The install clones the repo into your Copilot CLI extensions directory, and the bundled extension under `.github/extensions/agent-observer/` bootstraps automatically on next session start.
 
 ### Option 2: Manual install
 
@@ -161,10 +161,11 @@ After rebuilding, reload the observer window to pick up changes (close and reope
 ### Project structure
 
 ```
+plugin.json
 .github/extensions/agent-observer/
 ├── extension.mjs          # Bootstrap entry (npm install if needed, then loads main)
 ├── main.mjs               # Extension logic: session wiring, tools, commands
-├── package.json            # Runtime deps (@webviewjs/webview, ws)
+├── package.json           # Runtime deps (@webviewjs/webview, ws)
 ├── lib/
 │   ├── copilot-webview.js  # Reusable webview host (HTTP server + WebSocket bridge)
 │   ├── event-model.js      # Normalized event data model

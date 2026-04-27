@@ -1,0 +1,20 @@
+{
+  "name": "copilot-cli-agent-observer",
+  "version": "0.1.0-alpha",
+  "description": "Real-time observability for GitHub Copilot CLI agent sessions via the Agent Observer extension.",
+  "author": {
+    "name": "Rogn",
+    "url": "https://github.com/Rogn"
+  },
+  "homepage": "https://github.com/Rogn/copilot-cli-agent-observer",
+  "repository": "https://github.com/Rogn/copilot-cli-agent-observer.git",
+  "license": "MIT",
+  "keywords": [
+    "github-copilot-cli",
+    "copilot-cli",
+    "agent-observer",
+    "observability",
+    "extension",
+    "tooling"
+  ]
+}
