@@ -1,0 +1,18 @@
+# === OS / editor ===
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# === Node / npm ===
+node_modules/
+
+# === Dev-only MCP config (local to each developer) ===
+.mcp.json
+
+# === Playwright MCP server cache ===
+.playwright-mcp/
+
+# === Scratch screenshots (keep originals for media capture, not in repo) ===
+obs-*.png
