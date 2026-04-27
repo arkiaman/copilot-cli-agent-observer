@@ -21830,8 +21830,12 @@ function resultSnippet(toolName, resultPreview) {
   if (!resultPreview) return "";
   const text = safeText(resultPreview);
   if (!text) return "";
-  const firstLine = text.split("\n").find((l) => l.trim()) ?? text;
-  return previewText(firstLine, 120);
+  const lines = text.split("\n");
+  const meaningful = lines.find((l) => {
+    const t = l.trim();
+    return t && !/^[-=]+$/.test(t) && !/^\d+ match/.test(t) && !/^No matches/.test(t);
+  }) ?? lines.find((l) => l.trim()) ?? text;
+  return previewText(meaningful, 120);
 }
 function ExpandablePre({ text, limit = 500, className = "detail-pre" }) {
   const [expanded, setExpanded] = (0, import_react.useState)(false);
@@ -22174,6 +22178,23 @@ function buildActivityModel(snapshot) {
   const subagentMap = new Map(snapshot.subagents.map((record) => [record.id, record]));
   const toolCallMap = new Map(snapshot.toolCalls.map((record) => [record.id, record]));
   const messageMap = new Map(snapshot.messages.map((record) => [record.id, record]));
+  const messageToolNames = /* @__PURE__ */ new Map();
+  {
+    let lastMsgId = null;
+    let lastMsgParent = null;
+    for (const ref of snapshot.timeline) {
+      if (ref.kind === "message") {
+        lastMsgId = ref.id;
+        lastMsgParent = messageMap.get(ref.id)?.parentToolCallId ?? null;
+      } else if (ref.kind === "toolcall" && lastMsgId) {
+        const tc = toolCallMap.get(ref.id);
+        if (tc && tc.parentToolCallId === lastMsgParent) {
+          if (!messageToolNames.has(lastMsgId)) messageToolNames.set(lastMsgId, []);
+          messageToolNames.get(lastMsgId).push(tc.toolName);
+        }
+      }
+    }
+  }
   const graph = snapshot.executionGraph ?? buildFallbackExecutionGraph(snapshot);
   const rootNodeKey = graph.rootNodeKey || makeNodeKey("root", SYNTHETIC_ROOT_ID);
   const hiddenToolCallIds = new Set(graph.hiddenToolCallIds ?? []);
@@ -22248,12 +22269,8 @@ function buildActivityModel(snapshot) {
   for (const record of snapshot.messages) {
     const key = makeNodeKey("message", record.id);
     const content = safeText(record.content);
-    const childKeys = graph.childNodeKeys[key] ?? [];
-    const childToolNames = childKeys.map((ck) => {
-      const { kind, id } = parseNodeKey(ck);
-      return kind === "toolcall" ? toolCallMap.get(id)?.toolName : void 0;
-    }).filter((n) => Boolean(n));
-    const displayTitle = content ? previewText(content, 200) : childToolNames.length > 0 ? `\u2192 ${childToolNames.slice(0, 4).join(", ")}${childToolNames.length > 4 ? ` (+${childToolNames.length - 4})` : ""}` : "(empty)";
+    const toolNames = messageToolNames.get(record.id) ?? [];
+    const displayTitle = content ? previewText(content, 200) : toolNames.length > 0 ? `\u2192 ${toolNames.slice(0, 4).join(", ")}${toolNames.length > 4 ? ` (+${toolNames.length - 4})` : ""}` : "(empty)";
     nodesByKey.set(key, {
       key,
       kind: "message",

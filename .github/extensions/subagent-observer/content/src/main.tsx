@@ -302,9 +302,13 @@ function resultSnippet(toolName: string, resultPreview: string | undefined): str
     if (!resultPreview) return "";
     const text = safeText(resultPreview);
     if (!text) return "";
-    // For tools where args already describe input well, show first line of result
-    const firstLine = text.split("\n").find((l) => l.trim()) ?? text;
-    return previewText(firstLine, 120);
+    // Skip header-like lines (pure paths, counts, dashes) and return first meaningful line
+    const lines = text.split("\n");
+    const meaningful = lines.find((l) => {
+        const t = l.trim();
+        return t && !/^[-=]+$/.test(t) && !/^\d+ match/.test(t) && !/^No matches/.test(t);
+    }) ?? lines.find((l) => l.trim()) ?? text;
+    return previewText(meaningful, 120);
 }
 
 function ExpandablePre({ text, limit = 500, className = "detail-pre" }: { text: string; limit?: number; className?: string }) {
@@ -709,6 +713,27 @@ function buildActivityModel(snapshot: Snapshot): ActivityModel {
     const subagentMap = new Map(snapshot.subagents.map((record) => [record.id, record]));
     const toolCallMap = new Map(snapshot.toolCalls.map((record) => [record.id, record]));
     const messageMap = new Map(snapshot.messages.map((record) => [record.id, record]));
+
+    // Build message → [toolName, ...] mapping by scanning timeline in order.
+    // Tool calls that share the same parent and appear after a message (and before
+    // the next sibling message) were spawned by that message.
+    const messageToolNames = new Map<string, string[]>();
+    {
+        let lastMsgId: string | null = null;
+        let lastMsgParent: string | null = null;
+        for (const ref of snapshot.timeline) {
+            if (ref.kind === "message") {
+                lastMsgId = ref.id;
+                lastMsgParent = messageMap.get(ref.id)?.parentToolCallId ?? null;
+            } else if (ref.kind === "toolcall" && lastMsgId) {
+                const tc = toolCallMap.get(ref.id);
+                if (tc && tc.parentToolCallId === lastMsgParent) {
+                    if (!messageToolNames.has(lastMsgId)) messageToolNames.set(lastMsgId, []);
+                    messageToolNames.get(lastMsgId)!.push(tc.toolName);
+                }
+            }
+        }
+    }
     const graph = snapshot.executionGraph ?? buildFallbackExecutionGraph(snapshot);
     const rootNodeKey = graph.rootNodeKey || makeNodeKey("root", SYNTHETIC_ROOT_ID);
     const hiddenToolCallIds = new Set(graph.hiddenToolCallIds ?? []);
@@ -788,14 +813,11 @@ function buildActivityModel(snapshot: Snapshot): ActivityModel {
     for (const record of snapshot.messages) {
         const key = makeNodeKey("message", record.id);
         const content = safeText(record.content);
-        const childKeys = graph.childNodeKeys[key] ?? [];
-        const childToolNames = childKeys
-            .map((ck) => { const { kind, id } = parseNodeKey(ck); return kind === "toolcall" ? toolCallMap.get(id)?.toolName : undefined; })
-            .filter((n): n is string => Boolean(n));
+        const toolNames = messageToolNames.get(record.id) ?? [];
         const displayTitle = content
             ? previewText(content, 200)
-            : childToolNames.length > 0
-                ? `→ ${childToolNames.slice(0, 4).join(", ")}${childToolNames.length > 4 ? ` (+${childToolNames.length - 4})` : ""}`
+            : toolNames.length > 0
+                ? `→ ${toolNames.slice(0, 4).join(", ")}${toolNames.length > 4 ? ` (+${toolNames.length - 4})` : ""}`
                 : "(empty)";
         nodesByKey.set(key, {
             key,
