@@ -4,8 +4,8 @@
 
 See what your AI agents are actually doing — every tool call, every subagent spawn, every message — in a live native dashboard that runs alongside your terminal.
 
-<!-- TODO: Replace with captured hero screenshot after internal rename -->
-![Agent Observer overview](docs/images/hero-overview.png)
+<!-- Screenshot: docs/images/hero-overview.png — will be added after internal rename and media capture -->
+<!-- ![Agent Observer overview](docs/images/hero-overview.png) -->
 
 ---
 
@@ -45,7 +45,7 @@ This is an **alpha release** focused on **read-only observability**:
 |---|---|
 | **GitHub Copilot CLI** | Installed and working (`copilot` command available) |
 | **Experimental features** | Run `/experimental on` in a Copilot CLI session to enable plugin/extension support |
-| **Node.js** | v18+ (ships with Copilot CLI, but required for extension bootstrap) |
+| **Node.js** | v18+ with `node` and `npm` on PATH (the extension runs `npm install` during bootstrap and spawns `node` for the native window) |
 | **Platform** | Windows (x64), macOS (arm64/x64), Linux (x64). Native webview support varies — see [Compatibility](#compatibility) |
 
 ## Install
@@ -57,6 +57,8 @@ From any Copilot CLI session:
 ```
 /plugin install <owner>/agent-observer
 ```
+
+> Replace `<owner>` with the GitHub org or user that hosts the published repo.
 
 This clones the repo into your Copilot CLI extensions directory and runs bootstrap automatically on next session start.
 
@@ -70,6 +72,8 @@ cd <copilot-extensions-dir>
 
 git clone https://github.com/<owner>/agent-observer.git
 ```
+
+> Replace `<owner>` with the published repo owner and `<copilot-extensions-dir>` with your local Copilot CLI extensions path.
 
 The extension self-bootstraps on first load — it runs `npm install` automatically if dependencies are missing.
 
@@ -116,13 +120,15 @@ The agent has access to the `agent_observer_show` tool, so natural-language requ
 
 **Execution tree** — hierarchical view showing Root Session → Subagents → Tool Calls / Messages. Expand any node to drill into its children.
 
-![Timeline feed](docs/images/timeline-feed.png)
+<!-- Screenshot: docs/images/timeline-feed.png — will be added after internal rename and media capture -->
+<!-- ![Timeline feed](docs/images/timeline-feed.png) -->
 
 **Activity timeline** — chronological feed of all events with tool-type badges, agent attribution, and result previews.
 
 **Detail pane** — click any node or timeline row to inspect full arguments, results, timestamps, and agent context.
 
-![Detail inspection](docs/images/detail-inspection.png)
+<!-- Screenshot: docs/images/detail-inspection.png — will be added after internal rename and media capture -->
+<!-- ![Detail inspection](docs/images/detail-inspection.png) -->
 
 <!-- TODO: Add demo walkthrough GIF when captured -->
 <!-- ![Demo walkthrough](docs/media/demo-walkthrough.gif) -->
@@ -195,6 +201,7 @@ The native window is powered by [`@webviewjs/webview`](https://github.com/webvie
 - **No persistence** — closing the window or ending the session discards all captured data
 - **WebSocket bridge** — the UI connects to the extension via a local WebSocket; firewalls or security software that block localhost connections may interfere
 - **Linux webview** — requires GTK/WebKit system libraries that may not be present on minimal or server distros
+- **Data exposure** — the observer mirrors raw session content including file paths, tool arguments, result snippets, and assistant messages. Be mindful of this when screen-sharing, streaming, or capturing screenshots from sessions that touch private repos or sensitive data
 
 ---
 
