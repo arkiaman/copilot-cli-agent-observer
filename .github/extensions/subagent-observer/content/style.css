@@ -673,6 +673,25 @@ main {
   overflow-y: auto;
   color: #cdd6f4;
 }
+.expandable-pre-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.expandable-pre-toggle {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid #45475a;
+  border-radius: 4px;
+  color: #89b4fa;
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+}
+.expandable-pre-toggle:hover {
+  background: rgba(137, 180, 250, 0.1);
+  border-color: #89b4fa;
+}
 .detail-disclosure {
   margin-top: 0.75rem;
   border: 1px solid rgba(49, 50, 68, 0.75);

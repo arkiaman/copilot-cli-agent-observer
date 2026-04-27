@@ -254,6 +254,51 @@ function previewText(value: string, limit: number): string {
     return value.length > limit ? `${value.slice(0, limit)}…` : value;
 }
 
+function tryParseJSON(value: unknown): unknown {
+    if (typeof value !== "string") return value;
+    try { return JSON.parse(value); } catch { return null; }
+}
+
+function summarizeArgs(toolName: string, args: unknown): string {
+    const parsed = tryParseJSON(args) ?? args;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
+    const obj = parsed as Record<string, unknown>;
+    const byTool: Record<string, string[]> = {
+        grep: ["pattern", "query"],
+        view: ["path", "file"],
+        powershell: ["command", "script"],
+        bash: ["command", "script"],
+        glob: ["pattern"],
+    };
+    const keys = byTool[toolName.toLowerCase()] ?? [];
+    for (const k of keys) {
+        if (typeof obj[k] === "string" && obj[k]) return previewText(safeText(obj[k] as string), 80);
+    }
+    // generic: first string value
+    for (const v of Object.values(obj)) {
+        if (typeof v === "string" && v.trim()) return previewText(safeText(v), 80);
+    }
+    return "";
+}
+
+function ExpandablePre({ text, limit = 500, className = "detail-pre" }: { text: string; limit?: number; className?: string }) {
+    const [expanded, setExpanded] = useState(false);
+    const HARD_CEIL = 50_000;
+    const display = expanded ? text.slice(0, HARD_CEIL) : text.slice(0, limit);
+    const isTruncated = text.length > limit;
+    const isHardCeiled = expanded && text.length > HARD_CEIL;
+    return (
+        <div className="expandable-pre-wrap">
+            <pre className={className}>{display}{isHardCeiled ? "\n…(too large to display fully)" : ""}</pre>
+            {isTruncated && (
+                <button className="expandable-pre-toggle" onClick={() => setExpanded((v) => !v)}>
+                    {expanded ? "Show less" : `Show more (${text.length.toLocaleString()} chars total)`}
+                </button>
+            )}
+        </div>
+    );
+}
+
 function compareIsoDesc(a?: string, b?: string): number {
     const aTime = a ? Date.parse(a) : 0;
     const bTime = b ? Date.parse(b) : 0;
@@ -702,7 +747,8 @@ function buildActivityModel(snapshot: Snapshot): ActivityModel {
             kindLabel: "tool",
             title,
             subtitle: [
-                record.resultPreview ? previewText(safeText(record.resultPreview), 80) : "",
+                summarizeArgs(record.toolName, record.arguments) ||
+                (record.resultPreview ? previewText(safeText(record.resultPreview), 80) : ""),
             ].filter(Boolean).join(" · "),
             searchText: `${title} ${stringifyForSearch(record.arguments)} ${record.resultPreview ?? ""}`.toLowerCase(),
             parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
@@ -785,7 +831,8 @@ function buildActivityModel(snapshot: Snapshot): ActivityModel {
                 icon: statusIcon(record.status),
                 kindLabel: "tool",
                 title: record.toolName || shortId(record.id),
-                subtitle: record.resultPreview ? previewText(safeText(record.resultPreview), 72) : "",
+                subtitle: summarizeArgs(record.toolName, record.arguments) ||
+                    (record.resultPreview ? previewText(safeText(record.resultPreview), 72) : ""),
                 searchText: `${record.toolName} ${stringifyForSearch(record.arguments)} ${record.resultPreview ?? ""}`.toLowerCase(),
             });
             continue;
@@ -1400,8 +1447,13 @@ function DetailDisclosure({
     children: React.ReactNode;
     defaultOpen?: boolean;
 }) {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
     return (
-        <details className="detail-disclosure" open={defaultOpen}>
+        <details
+            className="detail-disclosure"
+            open={isOpen}
+            onToggle={(e) => setIsOpen((e.target as HTMLDetailsElement).open)}
+        >
             <summary className="detail-disclosure-summary">{title}</summary>
             <div className="detail-disclosure-body">{children}</div>
         </details>
@@ -1548,7 +1600,7 @@ function DetailPane({
 
                 <div className="detail-section">
                     <h4>Prompt (first 10 lines)</h4>
-                    <pre className="detail-pre">{promptText}</pre>
+                    <ExpandablePre text={promptText} limit={800} />
                 </div>
 
                 <DetailDisclosure title="Observer Context">
@@ -1628,7 +1680,7 @@ function DetailPane({
 
                 <div className="detail-section">
                     <h4>Prompt (first 10 lines)</h4>
-                    <pre className="detail-pre">{promptText}</pre>
+                    <ExpandablePre text={promptText} limit={800} />
                 </div>
 
                 <DetailDisclosure title="Observer Context">
@@ -1648,14 +1700,17 @@ function DetailPane({
                 </DetailDisclosure>
 
                 {record.arguments != null && (
-                    <DetailDisclosure title="Arguments">
-                        <pre className="detail-pre">{typeof record.arguments === "string" ? record.arguments : JSON.stringify(record.arguments, null, 2)}</pre>
+                    <DetailDisclosure title="Arguments" defaultOpen={true}>
+                        <ExpandablePre
+                            text={typeof record.arguments === "string" ? record.arguments : JSON.stringify(record.arguments, null, 2)}
+                            limit={1500}
+                        />
                     </DetailDisclosure>
                 )}
 
                 {record.resultPreview != null && (
-                    <DetailDisclosure title="Result Preview">
-                        <pre className="detail-pre">{record.resultPreview}</pre>
+                    <DetailDisclosure title="Result Preview" defaultOpen={true}>
+                        <ExpandablePre text={record.resultPreview} limit={1000} />
                     </DetailDisclosure>
                 )}
             </div>
@@ -1688,7 +1743,7 @@ function DetailPane({
 
             <div className="detail-section">
                 <h4>Prompt (first 10 lines)</h4>
-                <pre className="detail-pre">{record.content ? toPromptBlock(record.content) : UNAVAILABLE_FROM_EVENT_STREAM}</pre>
+                <ExpandablePre text={record.content ? toPromptBlock(record.content) : UNAVAILABLE_FROM_EVENT_STREAM} limit={800} />
             </div>
 
             <div className="detail-section">
@@ -1710,13 +1765,13 @@ function DetailPane({
             </DetailDisclosure>
 
             {record.content && (
-                <DetailDisclosure title="Content">
-                    <pre className="detail-pre">{record.content.slice(0, 2000)}{record.content.length > 2000 ? "\n…(truncated)" : ""}</pre>
+                <DetailDisclosure title="Content" defaultOpen={true}>
+                    <ExpandablePre text={record.content} limit={1000} />
                 </DetailDisclosure>
             )}
 
             {record.reasoningAvailability !== "unsupported" && (
-                <DetailDisclosure title="Reasoning">
+                <DetailDisclosure title="Reasoning" defaultOpen={true}>
                     <ReasoningSection availability={record.reasoningAvailability} text={record.reasoningText} />
                 </DetailDisclosure>
             )}
