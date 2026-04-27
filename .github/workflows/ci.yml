@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # Extension runtime dependencies
+      - name: Install extension deps
+        working-directory: .github/extensions/agent-observer
+        run: npm ci
+
+      # UI dependencies + build
+      - name: Install UI deps
+        working-directory: .github/extensions/agent-observer/content
+        run: npm ci
+
+      - name: Build UI bundle
+        working-directory: .github/extensions/agent-observer/content
+        run: npm run build
+
+      # Unit tests (Node built-in test runner)
+      - name: Run tests
+        working-directory: .github/extensions/agent-observer
+        run: node --test lib/__tests__/*.test.js

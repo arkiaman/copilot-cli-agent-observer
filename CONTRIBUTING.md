@@ -34,7 +34,20 @@ npm run watch    # Rebuild on changes
 3. Test your changes against a live Copilot CLI session if possible.
 4. Describe what your PR does and why in the PR description.
 
-There is no CI pipeline yet. Manual testing against a live session is the current verification method.
+CI runs automatically on push / PR to `master` (see `.github/workflows/ci.yml`). It checks:
+
+- Extension and UI dependency install
+- UI esbuild bundle
+- Unit tests for the event model and store
+
+You can run the tests locally:
+
+```bash
+cd .github/extensions/agent-observer/
+node --test lib/__tests__/*.test.js
+```
+
+Manual testing against a live Copilot CLI session is still recommended for UI and end-to-end changes.
 
 ## Code style
 
