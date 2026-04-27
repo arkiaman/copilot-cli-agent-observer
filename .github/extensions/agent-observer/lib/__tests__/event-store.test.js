@@ -242,16 +242,27 @@ describe("snapshot", () => {
         assert.equal(parsed.stats.subagentCount, 1);
     });
 
-    it("snapshot is cached until mutation", () => {
+    it("snapshotJson is stable across passive events, invalidated by mutation", () => {
         const store = createEventStore();
         store.ingest("subagent.started", {
             data: { toolCallId: "sa-1", agentName: "explore" },
             timestamp: "2025-01-01T00:00:00Z",
         });
         const json1 = store.snapshotJson();
+
+        // Passive event (unknown type) should not invalidate cache
+        store.ingest("session.idle", { data: {}, timestamp: "2025-01-01T00:02:00Z" });
         const json2 = store.snapshotJson();
-        // Exact same string reference due to caching
         assert.equal(json1, json2);
+
+        // Structural mutation must produce different output
+        store.ingest("tool.execution_start", {
+            data: { toolCallId: "tc-1", toolName: "grep", parentToolCallId: "sa-1" },
+            timestamp: "2025-01-01T00:03:00Z",
+        });
+        const json3 = store.snapshotJson();
+        assert.notEqual(json1, json3);
+        assert.ok(JSON.parse(json3).stats.toolCallCount === 1);
     });
 });
 

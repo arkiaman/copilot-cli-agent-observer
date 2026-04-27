@@ -21,6 +21,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: |
+            .github/extensions/agent-observer/package-lock.json
+            .github/extensions/agent-observer/content/package-lock.json
 
       # Extension runtime dependencies
       - name: Install extension deps
