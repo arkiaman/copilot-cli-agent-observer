@@ -92,18 +92,18 @@ development." This is self-contained, public-safe, and tells a compelling meta-s
 
 | Slot | File | Location | Status |
 |------|------|----------|--------|
-| Hero screenshot | `hero-overview.png` | `docs/images/` | ⏳ Needs capture after rename |
-| Timeline screenshot | `timeline-feed.png` | `docs/images/` | ⏳ Reshoot of `obs-timeline.png` after rename |
-| Detail screenshot | `detail-inspection.png` | `docs/images/` | ⏳ Needs capture (no existing equivalent) |
-| Demo walkthrough | `demo-walkthrough.gif` | `docs/media/` | ⏳ Needs capture after rename |
+| Hero screenshot | `hero-overview.png` | `docs/images/` | ✅ Captured (Playwright + mock data) |
+| Timeline screenshot | `timeline-feed.png` | `docs/images/` | ✅ Captured (Playwright + mock data) |
+| Detail screenshot | `detail-inspection.png` | `docs/images/` | ✅ Captured (Playwright + mock data) |
+| Demo walkthrough | `demo-walkthrough.gif` | `docs/media/` | ⏳ Requires manual screen recording — see CAPTURE-GUIDE.md |
 
 ## Existing assets disposition
 
 | File | Verdict | Reason |
 |------|---------|--------|
-| `obs-timeline.png` | **Replace** | Good composition, wrong branding. Reshoot as `timeline-feed.png` |
-| `obs-verify.png` | **Delete** | Crash/error screen — not suitable for any public use |
-| `obs-verify2.png` | **Replace** | Good tree view, but hero needs populated detail pane + new branding |
+| `obs-timeline.png` | **Deleted** | Replaced by `docs/images/timeline-feed.png` |
+| `obs-verify.png` | **Deleted** | Not suitable for public use |
+| `obs-verify2.png` | **Deleted** | Replaced by `docs/images/hero-overview.png` |
 
 Root-level `obs-*.png` files should be deleted from repo root after final captures
 are placed in `docs/images/`. They are development artifacts, not release assets.
@@ -117,10 +117,11 @@ replacing.
 
 **Execution order:**
 1. ✅ Media plan (this document)
-2. ⏳ Internal rename to `agent-observer`
-3. ⏳ Rebuild UI (`npm run build` in content/)
-4. ⏳ Run sanitized demo workflow
-5. ⏳ Capture 3 screenshots + 1 GIF
-6. ⏳ Place in `docs/images/` and `docs/media/`
-7. ⏳ Delete root `obs-*.png` files
-8. ⏳ Reference from README
+2. ✅ Internal rename to `agent-observer`
+3. ✅ Rebuild UI (`npm run build` in content/)
+4. ✅ Run sanitized demo workflow (Playwright + mock data server)
+5. ✅ Capture 3 screenshots
+6. ⏳ Capture 1 GIF (requires manual screen recording — see `docs/media/CAPTURE-GUIDE.md`)
+7. ✅ Place in `docs/images/` and `docs/media/`
+8. ✅ Delete root `obs-*.png` files
+9. ✅ Reference from README
