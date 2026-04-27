@@ -11,7 +11,7 @@
  * Auto-refreshes every 2 seconds.
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
 declare const copilot: {
@@ -927,7 +927,8 @@ function EventRow({
 function TreeBranch({
     branch,
     model,
-    selection,
+    selectedNodeKey,
+    selectedPath,
     collapsed,
     onToggle,
     onSelect,
@@ -935,7 +936,8 @@ function TreeBranch({
 }: {
     branch: VisibleTreeNode;
     model: ActivityModel;
-    selection: Selection;
+    selectedNodeKey: string | null;
+    selectedPath: Set<string>;
     collapsed: Record<string, boolean>;
     onToggle: (key: string) => void;
     onSelect: (selection: Selection) => void;
@@ -944,8 +946,6 @@ function TreeBranch({
     const node = model.nodesByKey.get(branch.key);
     if (!node) return null;
 
-    const selectedNodeKey = selectionToStructuralNodeKey(selection, model);
-    const selectedPath = selectedNodeKey ? new Set(model.nodesByKey.get(selectedNodeKey)?.pathKeys ?? []) : new Set<string>();
     const isSelected = selectedNodeKey === node.key;
     const inSelectedPath = !isSelected && selectedPath.has(node.key);
     const hasChildren = branch.children.length > 0;
@@ -953,8 +953,15 @@ function TreeBranch({
         ? true
         : selectedPath.has(node.key)
             ? true
-            : !(collapsed[node.key] ?? false);
+            : !(collapsed[node.key] ?? true);
     const depthGuides = Math.max(0, node.pathKeys.length - 2);
+    const visibleChildren = node.kind === "root" && !query
+        ? branch.children.filter((child) => {
+            const childNode = model.nodesByKey.get(child.key);
+            if (!childNode) return false;
+            return selectedPath.has(child.key) || childNode.kind === "subagent" || childNode.childKeys.length > 0 || childNode.orphan;
+        })
+        : branch.children;
 
     return (
         <div className={`tree-branch ${node.kind === "root" ? "tree-branch-root" : ""}`}>
@@ -1013,14 +1020,15 @@ function TreeBranch({
                 <div className="tree-row-time">{fmtTime(node.ts)}</div>
             </div>
 
-            {hasChildren && isExpanded && (
+            {visibleChildren.length > 0 && isExpanded && (
                 <div className="tree-children">
-                    {branch.children.map((child) => (
+                    {visibleChildren.map((child) => (
                         <TreeBranch
                             key={child.key}
                             branch={child}
                             model={model}
-                            selection={selection}
+                            selectedNodeKey={selectedNodeKey}
+                            selectedPath={selectedPath}
                             collapsed={collapsed}
                             onToggle={onToggle}
                             onSelect={onSelect}
@@ -1047,9 +1055,17 @@ function ExecutionTreeView({
     onSelect: (selection: Selection) => void;
 }) {
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+    const selectedNodeKey = useMemo(
+        () => selectionToStructuralNodeKey(selection, model),
+        [selection, model],
+    );
+    const selectedPath = useMemo(
+        () => new Set(selectedNodeKey ? model.nodesByKey.get(selectedNodeKey)?.pathKeys ?? [] : []),
+        [selectedNodeKey, model],
+    );
 
     const toggleNode = useCallback((key: string) => {
-        setCollapsed((current) => ({ ...current, [key]: !current[key] }));
+        setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? true) }));
     }, []);
 
     if (!visibleTree) {
@@ -1067,7 +1083,8 @@ function ExecutionTreeView({
             <TreeBranch
                 branch={visibleTree}
                 model={model}
-                selection={selection}
+                selectedNodeKey={selectedNodeKey}
+                selectedPath={selectedPath}
                 collapsed={collapsed}
                 onToggle={toggleNode}
                 onSelect={onSelect}
@@ -1581,10 +1598,16 @@ function App() {
     const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [selection, setSelection] = useState<Selection>(null);
+    const lastRawRef = useRef<string | null>(null);
 
     const refresh = useCallback(async () => {
         try {
             const raw = await copilot.getSnapshot();
+            if (raw === lastRawRef.current) {
+                setError(null);
+                return;
+            }
+            lastRawRef.current = raw;
             const parsed = JSON.parse(raw);
 
             if (parsed && typeof parsed.stats === "object" && Array.isArray(parsed.timeline)) {
@@ -1599,16 +1622,29 @@ function App() {
     }, []);
 
     useEffect(() => {
-        refresh();
+        void refresh();
 
         let inflight = false;
-        const id = setInterval(async () => {
+        const tick = async () => {
+            if (document.visibilityState === "hidden") return;
             if (inflight) return;
             inflight = true;
             try { await refresh(); } finally { inflight = false; }
-        }, 2000);
+        };
+        const onVisible = () => {
+            if (document.visibilityState === "visible") {
+                void tick();
+            }
+        };
+        const id = setInterval(() => { void tick(); }, 3000);
+        document.addEventListener("visibilitychange", onVisible);
+        window.addEventListener("focus", onVisible);
 
-        return () => clearInterval(id);
+        return () => {
+            clearInterval(id);
+            document.removeEventListener("visibilitychange", onVisible);
+            window.removeEventListener("focus", onVisible);
+        };
     }, [refresh]);
 
     const model = useMemo(() => (snapshot ? buildActivityModel(snapshot) : null), [snapshot]);

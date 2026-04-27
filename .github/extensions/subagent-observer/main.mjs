@@ -31,6 +31,34 @@ let unwirePrevious = null;
  *  compares its captured value to detect stale in-flight startups. */
 let sessionGeneration = 0;
 
+async function startObserving() {
+    // Tear down previous wiring (if any) so listeners aren't duplicated
+    // across session transitions within the same extension load.
+    if (unwirePrevious) {
+        try { unwirePrevious(); } catch { /* best-effort */ }
+        unwirePrevious = null;
+    }
+    // Reset store so stale data from a prior session is not carried over.
+    store.reset();
+    // Bump generation so any in-flight wireSession from a prior start
+    // will detect it is stale and bail out.
+    const gen = ++sessionGeneration;
+
+    const unwire = await wireSession(store, session, {
+        log: (msg) => session.log(msg),
+        generation: gen,
+        isCurrentGeneration: () => sessionGeneration === gen,
+    });
+
+    // Only install the cleanup handle if we are still the current generation.
+    if (sessionGeneration === gen) {
+        unwirePrevious = unwire;
+    } else {
+        // A newer session transition already happened — clean up immediately.
+        try { unwire(); } catch { /* best-effort */ }
+    }
+}
+
 // ── Webview setup ───────────────────────────────────────────────────────────
 
 const webview = new CopilotWebview({
@@ -43,7 +71,7 @@ const webview = new CopilotWebview({
         log: (msg, opts) => session.log(msg, opts),
 
         // Expose normalized snapshot data to the webview for rendering
-        getSnapshot: () => JSON.stringify(store.snapshot()),
+        getSnapshot: () => store.snapshotJson(),
     },
 });
 
@@ -65,34 +93,7 @@ const observerDumpTool = {
 
 const session = await joinSession({
     hooks: {
-        onSessionStart: async () => {
-            // Tear down previous wiring (if any) so listeners aren't duplicated
-            // across session transitions within the same extension load.
-            if (unwirePrevious) {
-                try { unwirePrevious(); } catch { /* best-effort */ }
-                unwirePrevious = null;
-            }
-            // Reset store so stale data from a prior session is not carried over.
-            store.reset();
-            // Bump generation so any in-flight wireSession from a prior start
-            // will detect it is stale and bail out.
-            const gen = ++sessionGeneration;
-
-            // Buffered startup: subscribe → replay → merge → live
-            const unwire = await wireSession(store, session, {
-                log: (msg) => session.log(msg),
-                generation: gen,
-                isCurrentGeneration: () => sessionGeneration === gen,
-            });
-
-            // Only install the cleanup handle if we are still the current generation.
-            if (sessionGeneration === gen) {
-                unwirePrevious = unwire;
-            } else {
-                // A newer session transition already happened — clean up immediately.
-                try { unwire(); } catch { /* best-effort */ }
-            }
-        },
+        onSessionStart: startObserving,
         onSessionEnd: async () => {
             // Tear down live listeners first, then close webview.
             if (unwirePrevious) {
@@ -110,6 +111,11 @@ const session = await joinSession({
     commands: [{
         name: "subagent-observer",
         description: "Open the subagent observer webview window.",
-        handler: webview.show,
+        handler: async () => { await webview.show(); },
     }],
 });
+
+// Attach immediately to the current foreground session as soon as the extension
+// loads. `onSessionStart` covers later transitions, but existing sessions need an
+// eager initial wire-up.
+await startObserving();

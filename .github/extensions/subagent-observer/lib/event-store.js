@@ -6,12 +6,19 @@
  *
  * Startup strategy (buffered merge):
  *   1. Live listeners are registered immediately and buffer events.
- *   2. Replay processes session.getMessages() into the store.
- *   3. Buffered live events are merged (dedupe is handled by upsert).
- *   4. The store switches to direct live ingestion.
+ *   2. Replay processes persisted session events from events.jsonl when possible
+ *      (fallback: session.getMessages()).
+ *   3. Buffered live events are merged.
+ *   4. A lightweight poller tails events.jsonl for cross-context events the SDK
+ *      does not forward over session.on(...).
+ *   5. Store switches to direct live ingestion.
  *
  * @module event-store
  */
+
+import { existsSync } from "node:fs";
+import { open, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
 
 import {
     SYNTHETIC_ROOT_ID,
@@ -24,6 +31,7 @@ import {
     classifyReasoning,
     resolveParent,
     buildParentIndex,
+    buildExecutionGraph,
     buildTimeline,
 } from "./event-model.js";
 
@@ -43,6 +51,18 @@ export function createEventStore() {
 
     /** Total raw events ingested (replay + live), for diagnostics. */
     let ingestedCount = 0;
+    /** Event IDs already seen from persisted log / live bus for dedupe. */
+    const seenEventIds = new Set();
+    /** Monotonic revision for snapshot/json cache invalidation. */
+    let revision = 0;
+    let cachedSnapshotRevision = -1;
+    let cachedSnapshot = null;
+    let cachedSnapshotJsonRevision = -1;
+    let cachedSnapshotJson = "";
+
+    function markDirty() {
+        revision += 1;
+    }
 
     // ── Live-event ingestors ────────────────────────────────────────────
 
@@ -157,9 +177,14 @@ export function createEventStore() {
      * Unknown event types are silently ignored.
      */
     function ingest(eventType, event) {
+        if (event?.id) {
+            if (seenEventIds.has(event.id)) return;
+            seenEventIds.add(event.id);
+        }
         const fn = ingestors[eventType];
         if (fn) {
             fn(event);
+            markDirty();
         } else if (passiveEvents.has(eventType)) {
             ingestedCount++;
         }
@@ -175,6 +200,14 @@ export function createEventStore() {
      * We extract what we can and feed it through the same upsert pipeline.
      */
     function ingestReplayMessage(msg) {
+        let mutated = false;
+
+        // Preferred path: full SessionEvent objects from SDK history or events.jsonl.
+        if (msg?.type && msg?.data) {
+            ingest(msg.type, msg);
+            return;
+        }
+
         // Use a counter-suffixed epoch timestamp when none is provided so
         // that replay-start and replay-complete records don't collide on
         // identical timestamps (mergeRecord keeps existing on equal ts).
@@ -199,6 +232,7 @@ export function createEventStore() {
                     _lastEventTs: ts,
                 });
                 ingestedCount++;
+                mutated = true;
             }
 
             // Each tool request in the assistant message represents a tool call start.
@@ -215,6 +249,7 @@ export function createEventStore() {
                         _lastEventTs: ts,
                     });
                     ingestedCount++;
+                    mutated = true;
                 }
             }
 
@@ -235,6 +270,7 @@ export function createEventStore() {
                         _lastEventTs: ts,
                     });
                     ingestedCount++;
+                    mutated = true;
                 }
             }
         }
@@ -255,15 +291,41 @@ export function createEventStore() {
                     _lastEventTs: ts,
                 });
                 ingestedCount++;
+                mutated = true;
             }
+        }
+
+        if (mutated) {
+            markDirty();
         }
     }
 
     // ── Snapshot (read-only view of current state) ──────────────────────
 
     function snapshot() {
+        if (cachedSnapshot && cachedSnapshotRevision === revision) {
+            return cachedSnapshot;
+        }
+
         const parentIndex = buildParentIndex(toolCalls);
+        const executionGraph = buildExecutionGraph(subagents, toolCalls, messages);
         const timeline = buildTimeline(subagents, toolCalls, messages);
+        const orphanToolCallIds = new Set(
+            executionGraph.orphanNodeKeys
+                .map((key) => {
+                    const separator = key.indexOf(":");
+                    const kind = separator === -1 ? key : key.slice(0, separator);
+                    const id = separator === -1 ? "" : key.slice(separator + 1);
+                    if (kind === "toolcall") return id;
+                    // A subagent node is unified with its spawning task tool call
+                    // (they share the same id). When that branch is orphaned the
+                    // structural node key is `subagent:<id>`, but the underlying
+                    // orphaned execution unit is still a tool call.
+                    if (kind === "subagent" && toolCalls.has(id)) return id;
+                    return null;
+                })
+                .filter(Boolean),
+        );
 
         // Convert parent index Map to plain object for JSON.
         // Use `toolCallId` key for backward compat with old webview/tools.
@@ -300,11 +362,12 @@ export function createEventStore() {
             };
         });
 
-        return {
+        cachedSnapshot = {
             subagents: [...subagents.values()],
             toolCalls: [...toolCalls.values()],
             messages: [...messages.values()],
             toolCallsByParent,
+            executionGraph,
             recentEvents,
             timeline: timeline.map((e) => ({ kind: e.kind, id: e.record.id })),
             stats: {
@@ -312,9 +375,20 @@ export function createEventStore() {
                 toolCallCount: toolCalls.size,
                 messageCount: messages.size,
                 ingestedEventCount: ingestedCount,
-                orphanToolCallCount: parentIndex.get(SYNTHETIC_ROOT_ID)?.length ?? 0,
+                orphanToolCallCount: orphanToolCallIds.size,
             },
         };
+        cachedSnapshotRevision = revision;
+        return cachedSnapshot;
+    }
+
+    function snapshotJson() {
+        if (cachedSnapshotJsonRevision === revision && cachedSnapshotJson) {
+            return cachedSnapshotJson;
+        }
+        cachedSnapshotJson = JSON.stringify(snapshot());
+        cachedSnapshotJsonRevision = revision;
+        return cachedSnapshotJson;
     }
 
     /**
@@ -365,12 +439,19 @@ export function createEventStore() {
         toolCalls.clear();
         messages.clear();
         ingestedCount = 0;
+        seenEventIds.clear();
+        markDirty();
+        cachedSnapshot = null;
+        cachedSnapshotRevision = -1;
+        cachedSnapshotJson = "";
+        cachedSnapshotJsonRevision = -1;
     }
 
     return {
         ingest,
         ingestReplayMessage,
         snapshot,
+        snapshotJson,
         dumpSummary,
         reset,
         /** Expose maps for advanced queries (e.g., webview callbacks) */
@@ -397,6 +478,7 @@ export function createEventStore() {
 export async function wireSession(store, session, opts = {}) {
     const log = opts.log ?? (() => Promise.resolve());
     const isCurrentGeneration = opts.isCurrentGeneration ?? (() => true);
+    const workspacePath = session.workspacePath;
 
     // Phase 1: Subscribe live events into a buffer
     /** @type {Array<{ type: string, event: any }>} */
@@ -441,25 +523,119 @@ export async function wireSession(store, session, opts = {}) {
             try { session.off?.(type, handler); } catch { /* session may already be torn down */ }
         }
         registeredListeners.length = 0;
+        if (tailTimer) clearInterval(tailTimer);
+        tailTimer = null;
     }
 
-    // Phase 2: Replay historical messages
     let replayCount = 0;
-    try {
-        if (typeof session.getMessages === "function") {
-            const history = await session.getMessages();
-            // After the async gap, bail out if a newer session transition
-            // has already superseded this one.
-            if (!isCurrentGeneration()) {
-                unwire();
-                return unwire;
-            }
-            if (Array.isArray(history)) {
-                for (const msg of history) {
-                    store.ingestReplayMessage(msg);
-                    replayCount++;
+    let tailTimer = null;
+    let tailInFlight = false;
+
+    const eventsPath = workspacePath ? join(workspacePath, "events.jsonl") : null;
+    let tailedBytes = 0;
+    let tailRemainder = "";
+
+    async function ingestPersistedChunk(text) {
+        let count = 0;
+        const endsWithNewline = /\r?\n$/.test(text);
+        const lines = text.split(/\r?\n/);
+        let remainder = "";
+
+        if (endsWithNewline) {
+            lines.pop();
+        } else {
+            remainder = lines.pop() ?? "";
+        }
+
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+                const event = JSON.parse(line);
+                if (event?.type) {
+                    store.ingest(event.type, event);
+                    count++;
                 }
+            } catch {
+                // Ignore malformed line fragments; tailer keeps partial final line separately.
             }
+        }
+
+        if (remainder.trim()) {
+            try {
+                const event = JSON.parse(remainder);
+                if (event?.type) {
+                    store.ingest(event.type, event);
+                    count++;
+                    remainder = "";
+                }
+            } catch {
+                // Keep trailing partial JSON for the next read.
+            }
+        }
+
+        return { count, remainder };
+    }
+
+    async function replayFromEventLog() {
+        if (!eventsPath || !existsSync(eventsPath)) return false;
+        const text = await readFile(eventsPath, "utf8");
+        const { count, remainder } = await ingestPersistedChunk(text);
+        replayCount += count;
+        tailedBytes = Buffer.byteLength(text, "utf8");
+        tailRemainder = remainder;
+        return true;
+    }
+
+    async function replayFromSdkHistory() {
+        if (typeof session.getMessages !== "function") return;
+        const history = await session.getMessages();
+        if (Array.isArray(history)) {
+            for (const msg of history) {
+                store.ingestReplayMessage(msg);
+                replayCount++;
+            }
+        }
+    }
+
+    async function tailEventLogOnce() {
+        if (!eventsPath || !existsSync(eventsPath) || disposed) return;
+        try {
+            const info = await stat(eventsPath);
+            if (info.size < tailedBytes) {
+                tailedBytes = 0;
+                tailRemainder = "";
+            }
+            if (info.size === tailedBytes) return;
+
+            const fh = await open(eventsPath, "r");
+            try {
+                const length = info.size - tailedBytes;
+                const bufferChunk = Buffer.alloc(length);
+                await fh.read(bufferChunk, 0, length, tailedBytes);
+                tailedBytes = info.size;
+
+                const text = tailRemainder + bufferChunk.toString("utf8");
+                const { remainder } = await ingestPersistedChunk(text);
+                tailRemainder = remainder;
+            } finally {
+                await fh.close();
+            }
+        } catch (err) {
+            await log(`⚠ event log tail failed (non-fatal): ${String(err)}`);
+        }
+    }
+
+    // Phase 2: Replay persisted historical events when available, otherwise SDK history.
+    try {
+        const replayedFromLog = await replayFromEventLog();
+        if (!replayedFromLog) {
+            await replayFromSdkHistory();
+        }
+        // After the async gap, bail out if a newer session transition
+        // has already superseded this one.
+        if (!isCurrentGeneration()) {
+            unwire();
+            return unwire;
         }
     } catch (err) {
         await log(`⚠ replay failed (non-fatal): ${String(err)}`);
@@ -483,9 +659,27 @@ export async function wireSession(store, session, opts = {}) {
         }
     }
 
+    // Phase 4: Tail persisted session event log for cross-context events that the
+    // SDK event bus does not forward to extensions.
+    if (eventsPath) {
+        tailTimer = setInterval(() => {
+            if (tailInFlight || disposed) return;
+            tailInFlight = true;
+            tailEventLogOnce()
+                .catch(() => {})
+                .finally(() => { tailInFlight = false; });
+        }, 1000);
+        if (!tailInFlight && !disposed) {
+            tailInFlight = true;
+            void tailEventLogOnce()
+                .catch(() => {})
+                .finally(() => { tailInFlight = false; });
+        }
+    }
+
     const snap = store.snapshot().stats;
     await log(
-        `subagent-observer: replay=${replayCount} msgs, buffered=${bufferedCount} events, ` +
+        `subagent-observer: replay=${replayCount} persisted events, buffered=${bufferedCount} events, ` +
         `store has ${snap.subagentCount} subagents, ${snap.toolCallCount} tool calls`,
     );
 
