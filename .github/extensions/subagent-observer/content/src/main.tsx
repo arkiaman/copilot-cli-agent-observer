@@ -8,7 +8,7 @@
  *   - Detail pane with lineage breadcrumbs for the selected node
  *
  * Data comes from the normalized event store via copilot.getSnapshot().
- * Auto-refreshes every 2 seconds.
+ * Auto-refreshes every 3 seconds while visible.
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
@@ -184,6 +184,7 @@ interface DetailHeroPill {
 }
 
 const SYNTHETIC_ROOT_ID = "__root__";
+const UNAVAILABLE_FROM_EVENT_STREAM = "Unavailable from event stream";
 
 function shortId(id: string): string {
     if (!id) return "—";
@@ -456,6 +457,167 @@ function getNodeTitleByKey(nodesByKey: Map<string, ExecutionNode>, key: string |
 
 function pluralize(count: number, noun: string, plural = `${noun}s`): string {
     return `${count} ${count === 1 ? noun : plural}`;
+}
+
+function titleCase(value: string): string {
+    return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+
+function extractNamedText(value: unknown, keys: string[], depth = 0): string | null {
+    if (depth > 4 || value == null) return null;
+    if (typeof value === "string") {
+        const text = value.trim();
+        return text ? text : null;
+    }
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const found = extractNamedText(item, keys, depth + 1);
+            if (found) return found;
+        }
+        return null;
+    }
+    if (typeof value === "object") {
+        const record = value as Record<string, unknown>;
+        for (const key of keys) {
+            if (key in record) {
+                const found = extractNamedText(record[key], keys, depth + 1);
+                if (found) return found;
+            }
+        }
+    }
+    return null;
+}
+
+function toPromptBlock(value: string, maxLines = 10): string {
+    const lines = value.split(/\r?\n/);
+    const shown = lines.slice(0, maxLines).join("\n");
+    return lines.length > maxLines ? `${shown}\n…` : shown;
+}
+
+function inferDurationMsForNode(model: ActivityModel, node: ExecutionNode): number | undefined {
+    if (node.kind === "subagent") {
+        const record = model.subagentMap.get(node.id);
+        if (!record) return undefined;
+        if (record.durationMs != null) return record.durationMs;
+        const start = record.startedAt ? Date.parse(record.startedAt) : NaN;
+        const endSource = record.completedAt || record.failedAt;
+        const end = endSource ? Date.parse(endSource) : (record.status === "started" ? Date.now() : NaN);
+        if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
+            return end - start;
+        }
+        return undefined;
+    }
+    if (node.kind === "toolcall") {
+        const record = model.toolCallMap.get(node.id);
+        if (!record) return undefined;
+        const start = record.startedAt ? Date.parse(record.startedAt) : NaN;
+        const endSource = record.completedAt;
+        const end = endSource ? Date.parse(endSource) : (record.status === "running" ? Date.now() : NaN);
+        if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
+            return end - start;
+        }
+    }
+    return undefined;
+}
+
+function formatNodeStatusSummary(model: ActivityModel, node: ExecutionNode): string {
+    if (node.kind === "root") return "Active";
+    const raw = normalizeStatus(node.status);
+    const label = titleCase(raw);
+    const durationMs = inferDurationMsForNode(model, node);
+    return durationMs != null ? `${label} (${fmtDuration(durationMs)})` : label;
+}
+
+function formatToolRecordStatusSummary(record: ToolCallRecord): string {
+    const label = titleCase(normalizeStatus(record.status));
+    const start = record.startedAt ? Date.parse(record.startedAt) : NaN;
+    const end = record.completedAt ? Date.parse(record.completedAt) : (record.status === "running" ? Date.now() : NaN);
+    if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
+        return `${label} (${fmtDuration(end - start)})`;
+    }
+    return label;
+}
+
+function getNodeTypeLabel(model: ActivityModel, node: ExecutionNode): string {
+    if (node.kind === "root") return "root";
+    if (node.kind === "subagent") {
+        return model.subagentMap.get(node.id)?.agentName || "subagent";
+    }
+    if (node.kind === "toolcall") return "tool";
+    return "assistant.message";
+}
+
+function getNodeDescription(model: ActivityModel, node: ExecutionNode): string {
+    if (node.kind === "root") return "Foreground session + orphan activity";
+    if (node.kind === "subagent") {
+        const record = model.subagentMap.get(node.id);
+        return record?.agentDescription || node.subtitle || UNAVAILABLE_FROM_EVENT_STREAM;
+    }
+    if (node.kind === "toolcall") {
+        const record = model.toolCallMap.get(node.id);
+        return record?.toolName || node.subtitle || UNAVAILABLE_FROM_EVENT_STREAM;
+    }
+    const record = model.messageMap.get(node.id);
+    const content = safeText(record?.content ?? "");
+    return content ? previewText(content, 140) : "Assistant message";
+}
+
+function getNodeModelLabel(model: ActivityModel, node: ExecutionNode): string {
+    if (node.kind === "root" || node.kind === "message") return UNAVAILABLE_FROM_EVENT_STREAM;
+    const keys = ["model", "modelName", "overrideModel", "override_model"];
+    const ownArgs = model.toolCallMap.get(node.id)?.arguments;
+    const ownModel = extractNamedText(ownArgs, keys);
+    if (ownModel) return previewText(safeText(ownModel), 80);
+    if (node.kind === "subagent") {
+        const descendantTool = collectDescendantNodes(model, node.key).find((candidate) => candidate.kind === "toolcall");
+        const descendantModel = descendantTool
+            ? extractNamedText(model.toolCallMap.get(descendantTool.id)?.arguments, keys)
+            : null;
+        if (descendantModel) return previewText(safeText(descendantModel), 80);
+    }
+    return UNAVAILABLE_FROM_EVENT_STREAM;
+}
+
+function getNodePromptText(model: ActivityModel, node: ExecutionNode): string {
+    if (node.kind === "root") return UNAVAILABLE_FROM_EVENT_STREAM;
+    if (node.kind === "message") {
+        const record = model.messageMap.get(node.id);
+        const content = safeText(record?.content ?? "");
+        return content ? toPromptBlock(content) : UNAVAILABLE_FROM_EVENT_STREAM;
+    }
+
+    const ownArgs = model.toolCallMap.get(node.id)?.arguments;
+    const ownPrompt = extractNamedText(ownArgs, ["prompt", "description", "task", "goal", "query", "message", "content", "input", "request"]);
+    if (ownPrompt) return toPromptBlock(ownPrompt);
+
+    const descendants = collectDescendantNodes(model, node.key);
+    const descendantPromptNode = descendants
+        .slice()
+        .sort((a, b) => compareIsoDesc(a.ts, b.ts))
+        .find((candidate) => candidate.kind === "toolcall" || candidate.kind === "message");
+    if (descendantPromptNode?.kind === "toolcall") {
+        const prompt = extractNamedText(model.toolCallMap.get(descendantPromptNode.id)?.arguments, ["prompt", "description", "task", "goal", "query", "message", "content", "input", "request"]);
+        if (prompt) return toPromptBlock(prompt);
+    }
+    if (descendantPromptNode?.kind === "message") {
+        const content = safeText(model.messageMap.get(descendantPromptNode.id)?.content ?? "");
+        if (content) return toPromptBlock(content);
+    }
+    return UNAVAILABLE_FROM_EVENT_STREAM;
+}
+
+function getRecentActivityNodes(model: ActivityModel, node: ExecutionNode, limit = 8): ExecutionNode[] {
+    if (node.kind === "message") return [];
+    return collectDescendantNodes(model, node.key)
+        .slice()
+        .sort((a, b) => compareIsoDesc(a.ts, b.ts))
+        .slice(0, limit);
+}
+
+function getRecentActivityPreview(model: ActivityModel, node: ExecutionNode): string {
+    const recent = getRecentActivityNodes(model, node, 1)[0];
+    if (!recent) return "No recent activity yet";
+    return recent.subtitle ? `${recent.title} — ${recent.subtitle}` : recent.title;
 }
 
 function resolveOwnerFromPath(
@@ -791,7 +953,7 @@ function OverviewCards({ stats, subagents }: { stats: Stats; subagents: Subagent
         <section className="overview">
             <div className="card">
                 <div className="card-value">{stats.subagentCount}</div>
-                <div className="card-label">Subagents</div>
+                <div className="card-label">Background Subagents</div>
                 {stats.subagentCount > 0 && (
                     <div className="card-detail">
                         {running > 0 && <span className="status-running">⏳{running}</span>}
@@ -848,9 +1010,9 @@ function BranchOverviewStrip({
     return (
         <section className="branch-overview-strip">
             <div className="branch-overview-header">
-                <span className="branch-overview-title">Root branches</span>
+                <span className="branch-overview-title">Background Subagents</span>
                 <span className="branch-overview-caption">
-                    Jump by branch. Scan state before drilling in.
+                    Scan status, desc, and recent activity before drilling in.
                     {hiddenBranchCount > 0 ? ` Showing ${branches.length} of ${sourceBranches.length}.` : ""}
                 </span>
             </div>
@@ -869,16 +1031,16 @@ function BranchOverviewStrip({
                             <div className="branch-overview-card-top">
                                 <span className={`activity-icon ${statusClass(node.status)}`}>{node.icon}</span>
                                 <span className="branch-overview-card-title">{node.title}</span>
-                                <span className="branch-overview-card-time">{fmtTime(node.ts)}</span>
+                                <span className="branch-overview-card-time">{formatNodeStatusSummary(model, node)}</span>
                             </div>
-                            {node.subtitle && <div className="branch-overview-card-subtitle">{node.subtitle}</div>}
+                            <div className="branch-overview-card-subtitle">{getNodeDescription(model, node)}</div>
+                            <div className="branch-overview-card-recent">
+                                <span className="branch-overview-card-recent-label">Recent Activity</span>
+                                <span className="branch-overview-card-recent-text">{getRecentActivityPreview(model, node)}</span>
+                            </div>
                             <div className="branch-overview-card-meta">
-                                <span className="branch-overview-meta-item">{node.kindLabel}</span>
-                                {node.kind !== "message" && node.kind !== "root" && (
-                                    <span className={`branch-overview-meta-item ${statusClass(node.status)}`}>{normalizeStatus(node.status)}</span>
-                                )}
-                                <span className="branch-overview-meta-item">{pluralize(node.childKeys.length, "child")}</span>
-                                <span className="branch-overview-meta-item">{pluralize(node.descendantCount, "node")}</span>
+                                <span className="branch-overview-meta-item">Type: {getNodeTypeLabel(model, node)}</span>
+                                <span className="branch-overview-meta-item">{fmtTime(node.ts)}</span>
                                 {node.orphan && <span className="branch-overview-meta-item branch-overview-meta-warn">orphan</span>}
                             </div>
                         </button>
@@ -1006,14 +1168,8 @@ function TreeBranch({
                 </div>
 
                 <div className="tree-row-meta">
-                    <span className="tree-meta-text tree-meta-kind">{node.kindLabel}</span>
-                    {node.kind !== "root" && node.kind !== "message" && (
-                        <span className={`tree-meta-text tree-meta-status ${statusClass(node.status)}`}>{normalizeStatus(node.status)}</span>
-                    )}
-                    {node.childKeys.length > 0 && <span className="tree-meta-text">{pluralize(node.childKeys.length, "child")}</span>}
-                    {node.descendantCount > node.childKeys.length && (
-                        <span className="tree-meta-text">{pluralize(node.descendantCount, "node")}</span>
-                    )}
+                    <span className="tree-meta-text tree-meta-kind">{getNodeTypeLabel(model, node)}</span>
+                    <span className={`tree-meta-text tree-meta-status ${statusClass(node.status)}`}>{formatNodeStatusSummary(model, node)}</span>
                     {node.orphan && <span className="tree-meta-text tree-meta-warn">orphan</span>}
                 </div>
 
@@ -1074,9 +1230,9 @@ function ExecutionTreeView({
 
     return (
         <div className="tree-list">
-            <div className="tree-head">
-                <div className="tree-head-cell">Execution tree</div>
-                <div className="tree-head-cell tree-head-meta">Meta</div>
+                <div className="tree-head">
+                <div className="tree-head-cell">Background activity</div>
+                <div className="tree-head-cell tree-head-meta">Status</div>
                 <div className="tree-head-cell tree-head-time">Updated</div>
             </div>
 
@@ -1190,14 +1346,14 @@ function ActivityWorkspace({
                             className={`segmented-button ${viewMode === "tree" ? "active" : ""}`}
                             onClick={() => setViewMode("tree")}
                         >
-                            Execution tree
+                            Activity tree
                         </button>
                         <button
                             type="button"
                             className={`segmented-button ${viewMode === "timeline" ? "active" : ""}`}
                             onClick={() => setViewMode("timeline")}
                         >
-                            Flat timeline
+                            Recent activity
                         </button>
                     </div>
                     <div className="search-wrap">
@@ -1206,7 +1362,7 @@ function ActivityWorkspace({
                             type="search"
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
-                            placeholder="Search branches, tools, messages…"
+                            placeholder="Search subagents, tools, recent activity…"
                         />
                         {search && (
                             <button type="button" className="clear-search" onClick={clearSearch}>
@@ -1219,16 +1375,16 @@ function ActivityWorkspace({
                 <div className="toolbar-row toolbar-row-wrap">
                     <div className="filter-group">
                         <span className="filter-label">Type</span>
-                        <FilterButton active={filters.subagents} label="Agents" onClick={() => toggleFilter("subagents")} />
+                        <FilterButton active={filters.subagents} label="Subagents" onClick={() => toggleFilter("subagents")} />
                         <FilterButton active={filters.tools} label="Tools" onClick={() => toggleFilter("tools")} />
-                        <FilterButton active={filters.messages} label="Msgs" onClick={() => toggleFilter("messages")} />
+                        <FilterButton active={filters.messages} label="Messages" onClick={() => toggleFilter("messages")} />
                     </div>
                     <div className="filter-group">
                         <span className="filter-label">Status</span>
                         <FilterButton active={filters.running} label="Running" onClick={() => toggleFilter("running")} />
                         <FilterButton active={filters.complete} label="Complete" onClick={() => toggleFilter("complete")} />
                         <FilterButton active={filters.failed} label="Failed" onClick={() => toggleFilter("failed")} />
-                        <FilterButton active={filters.root} label="Root/orphan" onClick={() => toggleFilter("root")} />
+                        <FilterButton active={filters.root} label="Root / orphan" onClick={() => toggleFilter("root")} />
                     </div>
                 </div>
             </div>
@@ -1305,15 +1461,20 @@ function Breadcrumbs({ pathKeys, model }: { pathKeys: string[]; model: ActivityM
     );
 }
 
-function ChildNodeList({ nodes }: { nodes: ExecutionNode[] }) {
-    if (nodes.length === 0) return null;
+function ChildNodeList({ nodes, emptyText = "No recent activity yet." }: { nodes: ExecutionNode[]; emptyText?: string }) {
+    if (nodes.length === 0) {
+        return <div className="detail-text detail-fallback">{emptyText}</div>;
+    }
     return (
         <div className="child-list">
             {nodes.slice(0, 20).map((node) => (
                 <div key={node.key} className="child-row">
-                    <span className={statusClass(node.status)}>{node.icon}</span>
-                    <span>{node.title}</span>
-                    <span className={`kind-pill kind-pill-${node.kind}`}>{node.kindLabel}</span>
+                    <span className={`child-row-icon ${statusClass(node.status)}`}>{node.icon}</span>
+                    <span className="child-row-main">
+                        <span className="child-row-title">{node.title}</span>
+                        {node.subtitle && <span className="child-row-subtitle">{node.subtitle}</span>}
+                    </span>
+                    <span className="child-row-time">{fmtTime(node.ts)}</span>
                 </div>
             ))}
         </div>
@@ -1342,38 +1503,50 @@ function DetailPane({
     if (selection.kind === "root") {
         const rootNode = model.nodesByKey.get(model.rootNodeKey);
         const rootOwnedChildren = directChildren.filter((node) => node.kind !== "subagent");
+        const recentActivity = rootNode ? getRecentActivityNodes(model, rootNode, 8) : [];
 
         return (
             <div className="detail-content">
                 <DetailHero
-                    kicker="Trace explorer"
+                    kicker="Background Tasks"
                     title="🧭 Root session"
                     subtitle="Foreground session + orphan activity"
                     pills={[
+                        { label: "Status: Active", className: "summary-chip" },
                         { label: pluralize(rootNode?.childKeys.length ?? 0, "top-level branch"), className: "summary-chip" },
                         { label: pluralize(rootNode?.descendantCount ?? 0, "descendant"), className: "summary-chip" },
-                        { label: pluralize(model.graph.orphanNodeKeys.length, "orphan"), className: model.graph.orphanNodeKeys.length > 0 ? "summary-chip summary-chip-warn" : "summary-chip" },
                         { label: `Updated ${fmtTime(rootNode?.ts)}`, className: "summary-chip" },
                     ]}
                 />
+                <FieldTable fields={[
+                    ["Status", "Active"],
+                    ["ID", "root"],
+                    ["Type", "root"],
+                    ["Desc", "Foreground session + orphan activity"],
+                    ["Model", UNAVAILABLE_FROM_EVENT_STREAM],
+                    ["Prompt", UNAVAILABLE_FROM_EVENT_STREAM],
+                ]} />
+
+                <div className="detail-section">
+                    <h4>Recent Activity</h4>
+                    <ChildNodeList nodes={recentActivity} />
+                </div>
+
+                <div className="detail-section">
+                    <h4>Observer Context</h4>
+                    <FieldTable fields={[
+                        ["Top-level branches", String(rootNode?.childKeys.length ?? 0)],
+                        ["Descendants", String(rootNode?.descendantCount ?? 0)],
+                        ["Root-owned nodes", String(rootOwnedChildren.length)],
+                        ["Orphan nodes", String(model.graph.orphanNodeKeys.length)],
+                        ["Last activity", fmtTime(rootNode?.ts)],
+                    ]} />
+                </div>
+
                 <div className="detail-section">
                     <h4>Lineage</h4>
                     <Breadcrumbs pathKeys={rootNode?.pathKeys ?? [model.rootNodeKey]} model={model} />
                 </div>
-                <FieldTable fields={[
-                    ["Top-level branches", String(rootNode?.childKeys.length ?? 0)],
-                    ["Descendants", String(rootNode?.descendantCount ?? 0)],
-                    ["Root-owned nodes", String(rootOwnedChildren.length)],
-                    ["Orphan nodes", String(model.graph.orphanNodeKeys.length)],
-                    ["Last activity", fmtTime(rootNode?.ts)],
-                ]} />
-
-                {directChildren.length > 0 && (
-                    <div className="detail-section">
-                        <h4>Top-level branches</h4>
-                        <ChildNodeList nodes={directChildren} />
-                    </div>
-                )}
             </div>
         );
     }
@@ -1384,55 +1557,61 @@ function DetailPane({
 
         const subtreeTools = descendants.filter((node) => node.kind === "toolcall");
         const subtreeMessages = descendants.filter((node) => node.kind === "message");
+        const promptText = getNodePromptText(model, structuralNode);
+        const recentActivity = getRecentActivityNodes(model, structuralNode, 8);
 
         return (
             <div className="detail-content">
                 <DetailHero
-                    kicker="Agent branch"
+                    kicker="Background Subagent"
                     title={`${statusIcon(record.status)} ${record.agentDisplayName || record.agentName}`}
-                    subtitle={record.agentDescription || structuralNode.subtitle}
+                    subtitle={getNodeDescription(model, structuralNode)}
                     pills={[
-                        { label: record.agentName || "subagent", className: "summary-chip" },
-                        { label: normalizeStatus(record.status), className: `lane-status ${statusClass(record.status)}` },
-                        { label: pluralize(structuralNode.childKeys.length, "direct child"), className: "summary-chip" },
-                        { label: pluralize(structuralNode.descendantCount, "descendant"), className: "summary-chip" },
+                        { label: formatNodeStatusSummary(model, structuralNode), className: `lane-status ${statusClass(record.status)}` },
+                        { label: `Type: ${getNodeTypeLabel(model, structuralNode)}`, className: "summary-chip" },
                         { label: `Updated ${fmtTime(structuralNode.ts)}`, className: "summary-chip" },
                     ]}
                 />
+                <FieldTable fields={[
+                    ["Status", formatNodeStatusSummary(model, structuralNode)],
+                    ["ID", shortId(record.id)],
+                    ["Type", getNodeTypeLabel(model, structuralNode)],
+                    ["Desc", getNodeDescription(model, structuralNode)],
+                    ["Model", getNodeModelLabel(model, structuralNode)],
+                    ["Prompt", previewText(safeText(promptText), 100)],
+                ]} />
+
+                <div className="detail-section">
+                    <h4>Prompt (first 10 lines)</h4>
+                    <pre className="detail-pre">{promptText}</pre>
+                </div>
+
+                <div className="detail-section">
+                    <h4>Recent Activity</h4>
+                    <ChildNodeList nodes={recentActivity} />
+                </div>
+
+                <div className="detail-section">
+                    <h4>Observer Context</h4>
+                    <FieldTable fields={[
+                        ["Parent", getNodeTitleByKey(model.nodesByKey, structuralNode.parentKey)],
+                        ["Started", fmtTime(record.startedAt)],
+                        ["Completed", fmtTime(record.completedAt)],
+                        ["Failed", record.failedAt ? fmtTime(record.failedAt) : undefined],
+                        ["Duration", fmtDuration(record.durationMs)],
+                        ["Direct children", String(structuralNode.childKeys.length)],
+                        ["Descendants", String(structuralNode.descendantCount)],
+                        ["Tree tools", String(subtreeTools.length)],
+                        ["Tree messages", String(subtreeMessages.length)],
+                        ["Tool Calls", record.totalToolCalls?.toString()],
+                        ["Tokens", record.totalTokens?.toString()],
+                    ]} />
+                </div>
+
                 <div className="detail-section">
                     <h4>Lineage</h4>
                     <Breadcrumbs pathKeys={pathKeys} model={model} />
                 </div>
-                <FieldTable fields={[
-                    ["ID", shortId(record.id)],
-                    ["Agent Name", record.agentName],
-                    ["Status", record.status],
-                    ["Parent", getNodeTitleByKey(model.nodesByKey, structuralNode.parentKey)],
-                    ["Started", fmtTime(record.startedAt)],
-                    ["Completed", fmtTime(record.completedAt)],
-                    ["Failed", record.failedAt ? fmtTime(record.failedAt) : undefined],
-                    ["Duration", fmtDuration(record.durationMs)],
-                    ["Direct children", String(structuralNode.childKeys.length)],
-                    ["Descendants", String(structuralNode.descendantCount)],
-                    ["Tree tools", String(subtreeTools.length)],
-                    ["Tree messages", String(subtreeMessages.length)],
-                    ["Tool Calls", record.totalToolCalls?.toString()],
-                    ["Tokens", record.totalTokens?.toString()],
-                ]} />
-
-                {record.agentDescription && (
-                    <div className="detail-section">
-                        <h4>Description</h4>
-                        <p className="detail-text">{record.agentDescription}</p>
-                    </div>
-                )}
-
-                {directChildren.length > 0 && (
-                    <div className="detail-section">
-                        <h4>Direct children</h4>
-                        <ChildNodeList nodes={directChildren} />
-                    </div>
-                )}
 
                 {record.error && (
                     <div className="detail-section detail-error">
@@ -1447,35 +1626,34 @@ function DetailPane({
     if (selection.kind === "toolcall") {
         const record = snapshot.toolCalls.find((tool) => tool.id === selection.id);
         if (!record) return <div className="detail-empty">Tool call not found.</div>;
+        const fallbackNode = structuralNode ?? model.nodesByKey.get(model.rootNodeKey)!;
+        const promptFromArguments = extractNamedText(record.arguments, ["prompt", "description", "task", "goal", "query", "message", "content", "input", "request"]);
+        const promptText = structuralNode
+            ? getNodePromptText(model, structuralNode)
+            : (promptFromArguments ? toPromptBlock(promptFromArguments) : UNAVAILABLE_FROM_EVENT_STREAM);
+        const modelText = extractNamedText(record.arguments, ["model", "modelName", "overrideModel", "override_model"]);
+        const statusSummary = formatToolRecordStatusSummary(record);
+        const recentActivity = structuralNode ? getRecentActivityNodes(model, structuralNode, 8) : [];
 
         return (
             <div className="detail-content">
                 <DetailHero
-                    kicker="Tool call"
+                    kicker="Background Task Detail"
                     title={`${statusIcon(record.status)} ${record.toolName || "Tool Call"}`}
-                    subtitle={structuralNode?.subtitle}
+                    subtitle={record.toolName || getNodeDescription(model, fallbackNode)}
                     pills={[
-                        { label: normalizeStatus(record.status), className: `lane-status ${statusClass(record.status)}` },
-                        { label: pluralize(structuralNode?.childKeys.length ?? 0, "direct child"), className: "summary-chip" },
-                        { label: pluralize(structuralNode?.descendantCount ?? 0, "descendant"), className: "summary-chip" },
+                        { label: statusSummary, className: `lane-status ${statusClass(record.status)}` },
+                        { label: "Type: tool", className: "summary-chip" },
                         { label: `Updated ${fmtTime(record.completedAt || record.startedAt || structuralNode?.ts)}`, className: "summary-chip" },
                     ]}
                 />
-                <div className="detail-section">
-                    <h4>Lineage</h4>
-                    <Breadcrumbs pathKeys={pathKeys} model={model} />
-                </div>
                 <FieldTable fields={[
+                    ["Status", statusSummary],
                     ["ID", shortId(record.id)],
-                    ["Tool", record.toolName],
-                    ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
-                    ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
-                    ["Status", record.status],
-                    ["Success", record.success != null ? String(record.success) : undefined],
-                    ["Started", fmtTime(record.startedAt)],
-                    ["Completed", fmtTime(record.completedAt)],
-                    ["Direct children", structuralNode ? String(structuralNode.childKeys.length) : undefined],
-                    ["Descendants", structuralNode ? String(structuralNode.descendantCount) : undefined],
+                    ["Type", "tool"],
+                    ["Desc", record.toolName || getNodeDescription(model, fallbackNode)],
+                    ["Model", modelText ? previewText(safeText(modelText), 80) : UNAVAILABLE_FROM_EVENT_STREAM],
+                    ["Prompt", previewText(safeText(promptText), 100)],
                 ]} />
 
                 {model.subagentMap.has(record.id) && (
@@ -1484,6 +1662,29 @@ function DetailPane({
                         <p className="detail-text">This task tool call is represented as a subagent branch in the execution tree.</p>
                     </div>
                 )}
+
+                <div className="detail-section">
+                    <h4>Prompt (first 10 lines)</h4>
+                    <pre className="detail-pre">{promptText}</pre>
+                </div>
+
+                <div className="detail-section">
+                    <h4>Recent Activity</h4>
+                    <ChildNodeList nodes={recentActivity} />
+                </div>
+
+                <div className="detail-section">
+                    <h4>Observer Context</h4>
+                    <FieldTable fields={[
+                        ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
+                        ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
+                        ["Success", record.success != null ? String(record.success) : undefined],
+                        ["Started", fmtTime(record.startedAt)],
+                        ["Completed", fmtTime(record.completedAt)],
+                        ["Direct children", structuralNode ? String(structuralNode.childKeys.length) : undefined],
+                        ["Descendants", structuralNode ? String(structuralNode.descendantCount) : undefined],
+                    ]} />
+                </div>
 
                 {record.arguments != null && (
                     <div className="detail-section">
@@ -1499,12 +1700,10 @@ function DetailPane({
                     </div>
                 )}
 
-                {directChildren.length > 0 && (
-                    <div className="detail-section">
-                        <h4>Direct children</h4>
-                        <ChildNodeList nodes={directChildren} />
-                    </div>
-                )}
+                <div className="detail-section">
+                    <h4>Lineage</h4>
+                    <Breadcrumbs pathKeys={pathKeys} model={model} />
+                </div>
             </div>
         );
     }
@@ -1515,26 +1714,48 @@ function DetailPane({
     return (
         <div className="detail-content">
             <DetailHero
-                kicker="Assistant message"
+                kicker="Background Task Detail"
                 title={`💬 ${previewText(safeText(record.content) || "(empty)", 88)}`}
-                subtitle={record.toolRequestCount > 0 ? `${record.toolRequestCount} pending tool request${record.toolRequestCount === 1 ? "" : "s"}` : structuralNode?.subtitle}
+                subtitle={getNodeDescription(model, structuralNode ?? model.nodesByKey.get(model.rootNodeKey)!)}
                 pills={[
-                    { label: "message", className: "summary-chip" },
-                    { label: pluralize(record.toolRequestCount, "tool request"), className: "summary-chip" },
+                    { label: "Complete", className: "lane-status status-complete" },
+                    { label: "Type: assistant.message", className: "summary-chip" },
                     { label: `Updated ${fmtTime(record.timestamp)}`, className: "summary-chip" },
                 ]}
             />
+            <FieldTable fields={[
+                ["Status", "Complete"],
+                ["ID", shortId(record.id)],
+                ["Type", "assistant.message"],
+                ["Desc", getNodeDescription(model, structuralNode ?? model.nodesByKey.get(model.rootNodeKey)!)],
+                ["Model", UNAVAILABLE_FROM_EVENT_STREAM],
+                ["Prompt", previewText(safeText(record.content), 100) || UNAVAILABLE_FROM_EVENT_STREAM],
+            ]} />
+
+            <div className="detail-section">
+                <h4>Prompt (first 10 lines)</h4>
+                <pre className="detail-pre">{record.content ? toPromptBlock(record.content) : UNAVAILABLE_FROM_EVENT_STREAM}</pre>
+            </div>
+
+            <div className="detail-section">
+                <h4>Recent Activity</h4>
+                <ChildNodeList nodes={[]} />
+            </div>
+
+            <div className="detail-section">
+                <h4>Observer Context</h4>
+                <FieldTable fields={[
+                    ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
+                    ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
+                    ["Tool Requests", record.toolRequestCount.toString()],
+                    ["Time", fmtTime(record.timestamp)],
+                ]} />
+            </div>
+
             <div className="detail-section">
                 <h4>Lineage</h4>
                 <Breadcrumbs pathKeys={pathKeys} model={model} />
             </div>
-            <FieldTable fields={[
-                ["ID", shortId(record.id)],
-                ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
-                ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
-                ["Tool Requests", record.toolRequestCount.toString()],
-                ["Time", fmtTime(record.timestamp)],
-            ]} />
 
             {record.content && (
                 <div className="detail-section">
@@ -1690,11 +1911,11 @@ function App() {
                     <OverviewCards stats={snapshot.stats} subagents={snapshot.subagents} />
                     <div className="panels">
                         <section className="panel-list">
-                            <div className="panel-header">Trace explorer</div>
+                            <div className="panel-header">Background Tasks</div>
                             <ActivityWorkspace model={model} selection={selection} onSelect={setSelection} />
                         </section>
                         <section className="panel-detail">
-                            <div className="panel-header">Inspector</div>
+                            <div className="panel-header">Subagent Details</div>
                             <DetailPane snapshot={snapshot} model={model} selection={selection} />
                         </section>
                     </div>

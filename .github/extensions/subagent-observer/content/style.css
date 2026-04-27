@@ -385,6 +385,25 @@ main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.branch-overview-card-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-height: 1.8rem;
+}
+.branch-overview-card-recent-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6c7086;
+}
+.branch-overview-card-recent-text {
+  font-size: 0.71rem;
+  color: #bac2de;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .branch-overview-card-meta {
   display: flex;
   gap: 0.35rem;
@@ -719,6 +738,10 @@ main {
   line-height: 1.5;
   color: #bac2de;
 }
+.detail-fallback {
+  color: #7f849c;
+  font-style: italic;
+}
 .detail-pre {
   background: #181825;
   border: 1px solid #313244;
@@ -806,14 +829,43 @@ main {
   gap: 2px;
 }
 .child-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 6px;
+  gap: 0.45rem;
   padding: 0.28rem 0.45rem;
   font-size: 0.8rem;
   background: rgba(49, 50, 68, 0.22);
   border: 1px solid rgba(69, 71, 90, 0.6);
   border-radius: 6px;
+}
+.child-row-icon {
+  width: 1rem;
+  text-align: center;
+}
+.child-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+}
+.child-row-title {
+  color: #dce0f5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.child-row-subtitle {
+  font-size: 0.7rem;
+  color: #7f849c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.child-row-time {
+  font-size: 0.69rem;
+  color: #6c7086;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Status colors ───────────────────────────────────────────────────────── */
