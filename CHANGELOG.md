@@ -16,9 +16,9 @@ First public alpha release — read-only observability for GitHub Copilot CLI ag
 - **Stats cards** — live counters for agents, tool calls, and messages
 - **Native desktop window** — powered by `@webviewjs/webview` (not a browser tab)
 - **Auto-connect** — wires into the active Copilot CLI session event stream automatically
-- **Self-bootstrap** — runs `npm install` on first load if dependencies are missing
+- **Self-bootstrap** — installs dependencies on first load, preferring deterministic `npm ci`
 - **Slash command** — `/agent-observer` to open the dashboard window
-- **Tools** — `agent_observer_show`, `agent_observer_eval`, `agent_observer_close`, `observer_dump_summary`
+- **Tools** — `agent_observer_show`, `agent_observer_close`, `observer_dump_summary`
 
 ### Architecture
 
@@ -32,3 +32,4 @@ First public alpha release — read-only observability for GitHub Copilot CLI ag
 - Read-only — cannot influence agent behavior
 - Single session — switching sessions resets the view
 - No persistence — closing the window discards captured data
+- Eval tool is dev-only — `agent_observer_eval` is gated behind `AGENT_OBSERVER_DEV=1`

@@ -3,7 +3,7 @@
 //
 // Public API:
 //   bootstrap(extDir)
-//       Installs npm deps if package-lock is missing/stale. Logs via the SDK.
+//       Installs npm deps deterministically when possible. Logs via the SDK.
 //   new CopilotWebview({ extensionName, contentDir, callbacks?, title?, width?, height? })
 //       One window per instance. Properties / methods:
 //         .tools                 → array of tool defs (`<extensionName>_show`,
@@ -75,11 +75,18 @@ const BRIDGE_JS = `(() => {
 
 function staticHandler(rootDir) {
     return async (req, res) => {
+        if (!req?.url) return res.writeHead(400).end();
+        if (req.method !== "GET" && req.method !== "HEAD") return res.writeHead(405).end();
         if (req.url === "/__bridge.js") {
             res.writeHead(200, { "Content-Type": "text/javascript" });
             return res.end(BRIDGE_JS);
         }
-        const rel = req.url === "/" ? "/index.html" : decodeURIComponent(req.url.split("?")[0]);
+        let rel;
+        try {
+            rel = req.url === "/" ? "/index.html" : decodeURIComponent(req.url.split("?")[0]);
+        } catch {
+            return res.writeHead(400).end();
+        }
         const abs = normalize(join(rootDir, rel));
         if (!abs.startsWith(rootDir + sep)) return res.writeHead(403).end();
         try {
@@ -94,14 +101,46 @@ function staticHandler(rootDir) {
 }
 
 export async function bootstrap(extDir) {
-    const pkg = join(extDir, "package.json");
     const lock = join(extDir, "package-lock.json");
-    if (existsSync(lock) && statSync(pkg).mtimeMs <= statSync(lock).mtimeMs) return;
+    const nodeModules = join(extDir, "node_modules");
+    const hasLock = existsSync(lock);
+    const hasNodeModules = existsSync(nodeModules);
+    if (hasNodeModules) return;
+
     const session = await joinSession();
-    await session.log("Installing extension dependencies…");
-    execSync("npm install --no-audit --no-fund", { cwd: extDir, stdio: "ignore" });
-    await session.log("Dependencies installed.");
-    await session.disconnect();
+    const commands = hasLock
+        ? ["npm ci --omit=dev --no-audit --no-fund", "npm install --no-audit --no-fund"]
+        : ["npm install --no-audit --no-fund"];
+
+    const formatOutput = (error) => {
+        const stdout = typeof error?.stdout === "string" ? error.stdout.trim() : Buffer.isBuffer(error?.stdout) ? error.stdout.toString("utf8").trim() : "";
+        const stderr = typeof error?.stderr === "string" ? error.stderr.trim() : Buffer.isBuffer(error?.stderr) ? error.stderr.toString("utf8").trim() : "";
+        return stderr || stdout || error?.message || "Unknown install failure";
+    };
+
+    try {
+        for (let i = 0; i < commands.length; i++) {
+            const command = commands[i];
+            await session.log(`Installing extension dependencies with \`${command}\`…`);
+            try {
+                execSync(command, { cwd: extDir, stdio: "pipe", encoding: "utf8" });
+                await session.log("Dependencies installed.");
+                return;
+            } catch (error) {
+                const details = formatOutput(error);
+                const isLastAttempt = i === commands.length - 1;
+                if (isLastAttempt) {
+                    await session.log(`Dependency install failed.\n${details}`);
+                    throw error;
+                }
+                await session.log(`Dependency install failed with \`${command}\`; retrying with fallback installer.\n${details}`);
+            }
+        }
+    } catch (error) {
+        throw error;
+    } finally {
+        await session.disconnect();
+    }
 }
 
 async function showWebview({ dir, title = "Copilot Webview", width = 900, height = 700, callbacks = {} } = {}) {
@@ -194,7 +233,7 @@ async function showWebview({ dir, title = "Copilot Webview", width = 900, height
 // single window for one extension. Tools are exposed via `.tools`. The slash
 // command lives in main.mjs and just calls `.show()`.
 export class CopilotWebview {
-    constructor({ extensionName, contentDir, callbacks = {}, title, width, height } = {}) {
+    constructor({ extensionName, contentDir, callbacks = {}, title, width, height, enableEvalTool = false } = {}) {
         if (!extensionName || typeof extensionName !== "string") {
             throw new Error("CopilotWebview: `extensionName` is required (used to prefix tool names).");
         }
@@ -208,6 +247,7 @@ export class CopilotWebview {
         this.title = title;
         this.width = width;
         this.height = height;
+        this.enableEvalTool = enableEvalTool;
         this._handle = null;
         this.close = this.close.bind(this);
     }
@@ -246,7 +286,7 @@ export class CopilotWebview {
 
     get tools() {
         const { prefix } = this;
-        return [
+        const tools = [
             {
                 name: `${prefix}_show`,
                 description: "Open the extension's native desktop window. If already open, by default leaves it untouched; pass reload=true to refresh the page.",
@@ -268,8 +308,19 @@ export class CopilotWebview {
                 },
             },
             {
+                name: `${prefix}_close`,
+                description: "Close the webview window if it is open.",
+                parameters: { type: "object", properties: {} },
+                handler: async () => {
+                    this.close();
+                    return "Closed.";
+                },
+            },
+        ];
+        if (this.enableEvalTool) {
+            tools.splice(1, 0, {
                 name: `${prefix}_eval`,
-                description: "Evaluate JavaScript inside the open webview window and return the result. Useful for DOM queries, reading state, or driving the page.",
+                description: "Evaluate JavaScript inside the open webview window and return the result. Development/debugging only.",
                 parameters: {
                     type: "object",
                     properties: {
@@ -287,16 +338,8 @@ export class CopilotWebview {
                         return `Error: ${e.message}`;
                     }
                 },
-            },
-            {
-                name: `${prefix}_close`,
-                description: "Close the webview window if it is open.",
-                parameters: { type: "object", properties: {} },
-                handler: async () => {
-                    this.close();
-                    return "Closed.";
-                },
-            },
-        ];
+            });
+        }
+        return tools;
     }
 }

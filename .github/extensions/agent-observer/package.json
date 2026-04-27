@@ -1,6 +1,12 @@
 {
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "test": "node --test lib/__tests__/*.test.js"
+  },
   "dependencies": {
     "@webviewjs/webview": "^0.1.4",
     "ws": "^8.18.0"

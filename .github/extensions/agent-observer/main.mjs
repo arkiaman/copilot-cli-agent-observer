@@ -67,6 +67,7 @@ const webview = new CopilotWebview({
     title: "Agent Observer",
     width: 1100,
     height: 750,
+    enableEvalTool: process.env.AGENT_OBSERVER_DEV === "1",
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
 

@@ -1,6 +1,9 @@
 {
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
   "scripts": {
     "build": "esbuild src/main.tsx --bundle --outfile=dist/main.js --format=esm --loader:.tsx=tsx --jsx=automatic --jsx-import-source=react",
     "watch": "npm run build -- --watch"

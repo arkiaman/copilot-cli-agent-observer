@@ -44,7 +44,7 @@ This is an **alpha release** focused on **read-only observability**:
 |---|---|
 | **GitHub Copilot CLI** | Installed and working (`copilot` command available) |
 | **Experimental features** | Run `/experimental on` in a Copilot CLI session to enable plugin/extension support |
-| **Node.js** | v18+ with `node` and `npm` on PATH (the extension runs `npm install` during bootstrap and spawns `node` for the native window) |
+| **Node.js** | v20.11+ with `node` and `npm` on PATH (the extension uses `import.meta.dirname`, bootstraps dependencies, and spawns `node` for the native window) |
 | **Platform** | Windows (x64), macOS (arm64/x64), Linux (x64). Native webview support varies — see [Compatibility](#compatibility) |
 
 ## Install
@@ -74,7 +74,7 @@ git clone https://github.com/Rogn/copilot-cli-agent-observer.git agent-observer
 
 Replace `<copilot-extensions-dir>` with your local Copilot CLI extensions path.
 
-The extension self-bootstraps on first load — it runs `npm install` automatically if dependencies are missing.
+The extension self-bootstraps on first load — it prefers `npm ci --omit=dev --no-audit --no-fund` when a lockfile is present, falling back to `npm install` only when needed.
 
 ---
 
@@ -82,7 +82,7 @@ The extension self-bootstraps on first load — it runs `npm install` automatica
 
 When Copilot CLI starts a session with the extension installed:
 
-1. **Bootstrap** — the extension checks for `node_modules/` and runs `npm install` if needed (first run only, takes a few seconds)
+1. **Bootstrap** — the extension checks for `node_modules/` and installs dependencies if needed (first run only, takes a few seconds). When `package-lock.json` is current it uses deterministic `npm ci --omit=dev --no-audit --no-fund`.
 2. **Session attach** — the observer wires into the active session's event stream, capturing all agent and tool activity
 3. **Ready** — tools and commands are registered; the observer is silently collecting data in the background
 
@@ -109,9 +109,10 @@ The agent has access to the `agent_observer_show` tool, so natural-language requ
 | Tool | Description |
 |---|---|
 | `agent_observer_show` | Open the observer window (or bring it to front) |
-| `agent_observer_eval` | Run JavaScript in the observer window (for debugging/scripting) |
 | `agent_observer_close` | Close the observer window |
 | `observer_dump_summary` | Return a structured JSON summary of all captured events (useful in agent conversations) |
+
+`agent_observer_eval` is **not exposed in normal installs**. For local development/debugging only, set `AGENT_OBSERVER_DEV=1` before starting Copilot CLI.
 
 ### Reading the dashboard
 

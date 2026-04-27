@@ -19,11 +19,11 @@ Quick start:
 ```bash
 # Extension runtime
 cd .github/extensions/agent-observer/
-npm install
+npm ci
 
 # UI (React + TypeScript)
 cd content/
-npm install
+npm ci
 npm run watch    # Rebuild on changes
 ```
 
@@ -44,10 +44,12 @@ You can run the tests locally:
 
 ```bash
 cd .github/extensions/agent-observer/
-node --test lib/__tests__/*.test.js
+npm test
 ```
 
 Manual testing against a live Copilot CLI session is still recommended for UI and end-to-end changes.
+
+If you need the debug-only `agent_observer_eval` tool locally, set `AGENT_OBSERVER_DEV=1` before starting Copilot CLI.
 
 ## Code style
 
