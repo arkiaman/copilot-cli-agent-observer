@@ -981,76 +981,6 @@ function OverviewCards({ stats, subagents }: { stats: Stats; subagents: Subagent
     );
 }
 
-function BranchOverviewStrip({
-    model,
-    visibleTree,
-    selection,
-    onSelect,
-}: {
-    model: ActivityModel;
-    visibleTree: VisibleTreeNode | null;
-    selection: Selection;
-    onSelect: (selection: Selection) => void;
-}) {
-    const selectedNodeKey = selectionToStructuralNodeKey(selection, model);
-    const selectedPath = new Set(model.nodesByKey.get(selectedNodeKey ?? "")?.pathKeys ?? []);
-    const allVisibleChildren = (visibleTree?.children ?? [])
-        .map((branch) => ({
-            branch,
-            node: model.nodesByKey.get(branch.key),
-        }))
-        .filter((entry): entry is { branch: VisibleTreeNode; node: ExecutionNode } => entry.node != null);
-    const candidateBranches = allVisibleChildren.filter(({ node }) => node.kind === "subagent" || node.childKeys.length > 0 || node.orphan);
-    const sourceBranches = candidateBranches.length > 0 ? candidateBranches : allVisibleChildren;
-    const hiddenBranchCount = Math.max(0, sourceBranches.length - 12);
-    const branches = sourceBranches.slice(0, 12);
-
-    if (branches.length === 0) return null;
-
-    return (
-        <section className="branch-overview-strip">
-            <div className="branch-overview-header">
-                <span className="branch-overview-title">Background Subagents</span>
-                <span className="branch-overview-caption">
-                    Scan status, desc, and recent activity before drilling in.
-                    {hiddenBranchCount > 0 ? ` Showing ${branches.length} of ${sourceBranches.length}.` : ""}
-                </span>
-            </div>
-            <div className="branch-overview-list">
-                {branches.map(({ node }) => {
-                    const isSelected = selectedNodeKey === node.key;
-                    const inSelectedPath = !isSelected && selectedPath.has(node.key);
-                    return (
-                        <button
-                            key={node.key}
-                            type="button"
-                            className={`branch-overview-card ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""}`}
-                            onClick={() => onSelect(selectionForNode(node))}
-                            title={node.title}
-                        >
-                            <div className="branch-overview-card-top">
-                                <span className={`activity-icon ${statusClass(node.status)}`}>{node.icon}</span>
-                                <span className="branch-overview-card-title">{node.title}</span>
-                                <span className="branch-overview-card-time">{formatNodeStatusSummary(model, node)}</span>
-                            </div>
-                            <div className="branch-overview-card-subtitle">{getNodeDescription(model, node)}</div>
-                            <div className="branch-overview-card-recent">
-                                <span className="branch-overview-card-recent-label">Recent Activity</span>
-                                <span className="branch-overview-card-recent-text">{getRecentActivityPreview(model, node)}</span>
-                            </div>
-                            <div className="branch-overview-card-meta">
-                                <span className="branch-overview-meta-item">Type: {getNodeTypeLabel(model, node)}</span>
-                                <span className="branch-overview-meta-item">{fmtTime(node.ts)}</span>
-                                {node.orphan && <span className="branch-overview-meta-item branch-overview-meta-warn">orphan</span>}
-                            </div>
-                        </button>
-                    );
-                })}
-            </div>
-        </section>
-    );
-}
-
 function EventRow({
     item,
     selection,
@@ -1110,13 +1040,23 @@ function TreeBranch({
 
     const isSelected = selectedNodeKey === node.key;
     const inSelectedPath = !isSelected && selectedPath.has(node.key);
+    const isTopLevelBranch = node.parentKey === model.rootNodeKey && node.kind !== "root";
     const hasChildren = branch.children.length > 0;
+    const defaultCollapsed = node.kind === "root" ? false : true;
     const isExpanded = query
         ? true
         : selectedPath.has(node.key)
             ? true
-            : !(collapsed[node.key] ?? true);
+            : !(collapsed[node.key] ?? defaultCollapsed);
     const depthGuides = Math.max(0, node.pathKeys.length - 2);
+    const nodeDescription = getNodeDescription(model, node);
+    const disambiguator = isTopLevelBranch
+        ? (() => {
+            const modelLabel = getNodeModelLabel(model, node);
+            return modelLabel !== UNAVAILABLE_FROM_EVENT_STREAM ? `Model: ${modelLabel}` : `ID: ${shortId(node.id)}`;
+        })()
+        : null;
+    const recentPreview = isTopLevelBranch ? getRecentActivityPreview(model, node) : null;
     const visibleChildren = node.kind === "root" && !query
         ? branch.children.filter((child) => {
             const childNode = model.nodesByKey.get(child.key);
@@ -1127,7 +1067,7 @@ function TreeBranch({
 
     return (
         <div className={`tree-branch ${node.kind === "root" ? "tree-branch-root" : ""}`}>
-            <div className={`tree-row ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""}`}>
+            <div className={`tree-row ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""} ${isTopLevelBranch ? "tree-row-top-level" : ""}`}>
                 <div className="tree-row-main">
                     <div className="tree-guides" aria-hidden="true">
                         {Array.from({ length: depthGuides }).map((_, index) => {
@@ -1160,15 +1100,24 @@ function TreeBranch({
                             title={node.title}
                         >
                         <span className={`activity-icon ${statusClass(node.status)}`}>{node.icon}</span>
-                        <span className="tree-title-wrap">
+                        <span className={`tree-title-wrap ${isTopLevelBranch ? "tree-title-wrap-top-level" : ""}`}>
                             <span className="tree-title">{node.title}</span>
-                            {node.subtitle && <span className="tree-subtitle">{node.subtitle}</span>}
+                            {(isTopLevelBranch ? nodeDescription : node.subtitle) && (
+                                <span className="tree-subtitle">{isTopLevelBranch ? nodeDescription : node.subtitle}</span>
+                            )}
+                            {isTopLevelBranch && (
+                                <span className="tree-summary-line">
+                                    <span className="tree-summary-primary">Recent: {recentPreview}</span>
+                                    <span className="tree-summary-divider">•</span>
+                                    <span className="tree-summary-secondary">{disambiguator}</span>
+                                </span>
+                            )}
                         </span>
                     </button>
                 </div>
 
                 <div className="tree-row-meta">
-                    <span className="tree-meta-text tree-meta-kind">{getNodeTypeLabel(model, node)}</span>
+                    {!isTopLevelBranch && <span className="tree-meta-text tree-meta-kind">{getNodeTypeLabel(model, node)}</span>}
                     <span className={`tree-meta-text tree-meta-status ${statusClass(node.status)}`}>{formatNodeStatusSummary(model, node)}</span>
                     {node.orphan && <span className="tree-meta-text tree-meta-warn">orphan</span>}
                 </div>
@@ -1389,13 +1338,6 @@ function ActivityWorkspace({
                 </div>
             </div>
 
-            <BranchOverviewStrip
-                model={model}
-                visibleTree={visibleTree}
-                selection={selection}
-                onSelect={onSelect}
-            />
-
             {viewMode === "tree" ? (
                 <ExecutionTreeView
                     model={model}
@@ -1443,6 +1385,23 @@ function DetailHero({
                 </div>
             )}
         </div>
+    );
+}
+
+function DetailDisclosure({
+    title,
+    children,
+    defaultOpen = false,
+}: {
+    title: string;
+    children: React.ReactNode;
+    defaultOpen?: boolean;
+}) {
+    return (
+        <details className="detail-disclosure" open={defaultOpen}>
+            <summary className="detail-disclosure-summary">{title}</summary>
+            <div className="detail-disclosure-body">{children}</div>
+        </details>
     );
 }
 
@@ -1532,8 +1491,7 @@ function DetailPane({
                     <ChildNodeList nodes={recentActivity} />
                 </div>
 
-                <div className="detail-section">
-                    <h4>Observer Context</h4>
+                <DetailDisclosure title="Observer Context">
                     <FieldTable fields={[
                         ["Top-level branches", String(rootNode?.childKeys.length ?? 0)],
                         ["Descendants", String(rootNode?.descendantCount ?? 0)],
@@ -1541,12 +1499,11 @@ function DetailPane({
                         ["Orphan nodes", String(model.graph.orphanNodeKeys.length)],
                         ["Last activity", fmtTime(rootNode?.ts)],
                     ]} />
-                </div>
-
-                <div className="detail-section">
-                    <h4>Lineage</h4>
-                    <Breadcrumbs pathKeys={rootNode?.pathKeys ?? [model.rootNodeKey]} model={model} />
-                </div>
+                    <div className="detail-section">
+                        <h4>Lineage</h4>
+                        <Breadcrumbs pathKeys={rootNode?.pathKeys ?? [model.rootNodeKey]} model={model} />
+                    </div>
+                </DetailDisclosure>
             </div>
         );
     }
@@ -1582,17 +1539,16 @@ function DetailPane({
                 ]} />
 
                 <div className="detail-section">
-                    <h4>Prompt (first 10 lines)</h4>
-                    <pre className="detail-pre">{promptText}</pre>
-                </div>
-
-                <div className="detail-section">
                     <h4>Recent Activity</h4>
                     <ChildNodeList nodes={recentActivity} />
                 </div>
 
                 <div className="detail-section">
-                    <h4>Observer Context</h4>
+                    <h4>Prompt (first 10 lines)</h4>
+                    <pre className="detail-pre">{promptText}</pre>
+                </div>
+
+                <DetailDisclosure title="Observer Context">
                     <FieldTable fields={[
                         ["Parent", getNodeTitleByKey(model.nodesByKey, structuralNode.parentKey)],
                         ["Started", fmtTime(record.startedAt)],
@@ -1606,12 +1562,11 @@ function DetailPane({
                         ["Tool Calls", record.totalToolCalls?.toString()],
                         ["Tokens", record.totalTokens?.toString()],
                     ]} />
-                </div>
-
-                <div className="detail-section">
-                    <h4>Lineage</h4>
-                    <Breadcrumbs pathKeys={pathKeys} model={model} />
-                </div>
+                    <div className="detail-section">
+                        <h4>Lineage</h4>
+                        <Breadcrumbs pathKeys={pathKeys} model={model} />
+                    </div>
+                </DetailDisclosure>
 
                 {record.error && (
                     <div className="detail-section detail-error">
@@ -1664,17 +1619,16 @@ function DetailPane({
                 )}
 
                 <div className="detail-section">
-                    <h4>Prompt (first 10 lines)</h4>
-                    <pre className="detail-pre">{promptText}</pre>
-                </div>
-
-                <div className="detail-section">
                     <h4>Recent Activity</h4>
                     <ChildNodeList nodes={recentActivity} />
                 </div>
 
                 <div className="detail-section">
-                    <h4>Observer Context</h4>
+                    <h4>Prompt (first 10 lines)</h4>
+                    <pre className="detail-pre">{promptText}</pre>
+                </div>
+
+                <DetailDisclosure title="Observer Context">
                     <FieldTable fields={[
                         ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
                         ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
@@ -1684,26 +1638,23 @@ function DetailPane({
                         ["Direct children", structuralNode ? String(structuralNode.childKeys.length) : undefined],
                         ["Descendants", structuralNode ? String(structuralNode.descendantCount) : undefined],
                     ]} />
-                </div>
+                    <div className="detail-section">
+                        <h4>Lineage</h4>
+                        <Breadcrumbs pathKeys={pathKeys} model={model} />
+                    </div>
+                </DetailDisclosure>
 
                 {record.arguments != null && (
-                    <div className="detail-section">
-                        <h4>Arguments</h4>
+                    <DetailDisclosure title="Arguments">
                         <pre className="detail-pre">{typeof record.arguments === "string" ? record.arguments : JSON.stringify(record.arguments, null, 2)}</pre>
-                    </div>
+                    </DetailDisclosure>
                 )}
 
                 {record.resultPreview != null && (
-                    <div className="detail-section">
-                        <h4>Result Preview</h4>
+                    <DetailDisclosure title="Result Preview">
                         <pre className="detail-pre">{record.resultPreview}</pre>
-                    </div>
+                    </DetailDisclosure>
                 )}
-
-                <div className="detail-section">
-                    <h4>Lineage</h4>
-                    <Breadcrumbs pathKeys={pathKeys} model={model} />
-                </div>
             </div>
         );
     }
@@ -1739,40 +1690,40 @@ function DetailPane({
 
             <div className="detail-section">
                 <h4>Recent Activity</h4>
-                <ChildNodeList nodes={[]} />
+                <ChildNodeList nodes={[]} emptyText="No child activity for messages." />
             </div>
 
-            <div className="detail-section">
-                <h4>Observer Context</h4>
+            <DetailDisclosure title="Observer Context">
                 <FieldTable fields={[
                     ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
                     ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
                     ["Tool Requests", record.toolRequestCount.toString()],
                     ["Time", fmtTime(record.timestamp)],
                 ]} />
-            </div>
-
-            <div className="detail-section">
-                <h4>Lineage</h4>
-                <Breadcrumbs pathKeys={pathKeys} model={model} />
-            </div>
+                <div className="detail-section">
+                    <h4>Lineage</h4>
+                    <Breadcrumbs pathKeys={pathKeys} model={model} />
+                </div>
+            </DetailDisclosure>
 
             {record.content && (
-                <div className="detail-section">
-                    <h4>Content</h4>
+                <DetailDisclosure title="Content">
                     <pre className="detail-pre">{record.content.slice(0, 2000)}{record.content.length > 2000 ? "\n…(truncated)" : ""}</pre>
-                </div>
+                </DetailDisclosure>
             )}
 
-            <ReasoningSection availability={record.reasoningAvailability} text={record.reasoningText} />
+            {record.reasoningAvailability !== "unsupported" && (
+                <DetailDisclosure title="Reasoning">
+                    <ReasoningSection availability={record.reasoningAvailability} text={record.reasoningText} />
+                </DetailDisclosure>
+            )}
         </div>
     );
 }
 
 function ReasoningSection({ availability, text }: { availability: string; text?: string }) {
     return (
-        <div className="detail-section">
-            <h4>Reasoning</h4>
+        <div className="detail-section detail-section-inline">
             {availability === "available" && (text ? (
                 <pre className="detail-pre reasoning-text">{text}</pre>
             ) : (

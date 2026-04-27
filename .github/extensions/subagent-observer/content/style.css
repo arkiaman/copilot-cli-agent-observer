@@ -302,124 +302,6 @@ main {
   line-height: 1.5;
 }
 
-/* ── Branch overview strip ──────────────────────────────────────────────── */
-.branch-overview-strip {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  padding: 0.6rem 0.75rem 0.7rem;
-  border-bottom: 1px solid rgba(49, 50, 68, 0.75);
-  background: rgba(17, 17, 27, 0.28);
-}
-.branch-overview-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-.branch-overview-title {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #a6adc8;
-}
-.branch-overview-caption {
-  font-size: 0.72rem;
-  color: #6c7086;
-}
-.branch-overview-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.5rem;
-}
-.branch-overview-card {
-  border: 1px solid rgba(69, 71, 90, 0.88);
-  border-radius: 10px;
-  background: rgba(24, 24, 37, 0.88);
-  color: inherit;
-  padding: 0.6rem 0.7rem;
-  text-align: left;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-.branch-overview-card:hover {
-  background: rgba(30, 30, 46, 0.96);
-  border-color: rgba(137, 180, 250, 0.5);
-}
-.branch-overview-card.selected {
-  border-color: #cba6f7;
-  box-shadow: inset 3px 0 0 #cba6f7;
-  background: rgba(49, 34, 68, 0.44);
-}
-.branch-overview-card.selected-ancestor {
-  border-color: rgba(137, 180, 250, 0.55);
-}
-.branch-overview-card-top {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 0.45rem;
-  align-items: center;
-}
-.branch-overview-card-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.83rem;
-  color: #e6e9f8;
-}
-.branch-overview-card-time {
-  font-size: 0.69rem;
-  color: #6c7086;
-  font-variant-numeric: tabular-nums;
-}
-.branch-overview-card-subtitle {
-  font-size: 0.72rem;
-  color: #7f849c;
-  min-height: 1.1rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.branch-overview-card-recent {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-height: 1.8rem;
-}
-.branch-overview-card-recent-label {
-  font-size: 0.62rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #6c7086;
-}
-.branch-overview-card-recent-text {
-  font-size: 0.71rem;
-  color: #bac2de;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.branch-overview-card-meta {
-  display: flex;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-}
-.branch-overview-meta-item {
-  padding: 0.12rem 0.38rem;
-  border-radius: 999px;
-  background: rgba(49, 50, 68, 0.55);
-  color: #bac2de;
-  font-size: 0.67rem;
-}
-.branch-overview-meta-warn {
-  color: #f9e2af;
-}
-
 /* ── Execution tree ───────────────────────────────────────────────────────── */
 .tree-list {
   display: flex;
@@ -474,6 +356,12 @@ main {
 .tree-row.selected-ancestor {
   background: rgba(137, 180, 250, 0.06);
 }
+.tree-row-top-level {
+  min-height: 54px;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+  background: rgba(30, 30, 46, 0.36);
+}
 .tree-row-main {
   min-width: 0;
   display: flex;
@@ -524,6 +412,9 @@ main {
   flex-direction: column;
   gap: 0.02rem;
 }
+.tree-title-wrap-top-level {
+  gap: 0.18rem;
+}
 .tree-title {
   font-size: 0.8rem;
   color: #e6e9f8;
@@ -539,6 +430,28 @@ main {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.tree-summary-line {
+  display: flex;
+  align-items: center;
+  gap: 0.32rem;
+  min-width: 0;
+  font-size: 0.68rem;
+  color: #8f96b5;
+}
+.tree-summary-primary,
+.tree-summary-secondary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-summary-primary {
+  color: #bac2de;
+}
+.tree-summary-divider {
+  flex-shrink: 0;
+  color: #585b70;
 }
 .tree-row-meta {
   display: flex;
@@ -725,6 +638,9 @@ main {
 .detail-section {
   margin-top: 0.75rem;
 }
+.detail-section-inline {
+  margin-top: 0;
+}
 .detail-section h4 {
   font-size: 0.75rem;
   font-weight: 600;
@@ -756,6 +672,36 @@ main {
   max-height: 300px;
   overflow-y: auto;
   color: #cdd6f4;
+}
+.detail-disclosure {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(49, 50, 68, 0.75);
+  border-radius: 8px;
+  background: rgba(17, 17, 27, 0.32);
+}
+.detail-disclosure-summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #a6adc8;
+}
+.detail-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+.detail-disclosure-summary::before {
+  content: "▸";
+  margin-right: 0.45rem;
+  color: #89b4fa;
+}
+.detail-disclosure[open] > .detail-disclosure-summary::before {
+  content: "▾";
+}
+.detail-disclosure-body {
+  padding: 0 0.7rem 0.7rem;
 }
 .detail-error .detail-pre {
   border-color: #f38ba8;
@@ -903,10 +849,6 @@ main {
   .event-row {
     grid-template-columns: 1fr;
     align-items: flex-start;
-  }
-
-  .branch-overview-list {
-    grid-template-columns: 1fr;
   }
 
   .tree-row-meta {
