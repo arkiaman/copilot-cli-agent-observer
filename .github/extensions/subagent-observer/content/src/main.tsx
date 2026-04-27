@@ -831,7 +831,7 @@ function buildActivityModel(snapshot: Snapshot): ActivityModel {
             subtitle: record.toolRequestCount > 0 ? `${record.toolRequestCount} tool req${record.toolRequestCount === 1 ? "" : "s"}` : "",
             searchText: `${content} ${record.reasoningText ?? ""}`.toLowerCase(),
             parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
-            childKeys,
+            childKeys: graph.childNodeKeys[key] ?? [],
             pathKeys: graph.pathNodeKeys[key] ?? [rootNodeKey, key],
             descendantCount: graph.descendantCounts[key] ?? 0,
             orphan: orphanKeys.has(key),
