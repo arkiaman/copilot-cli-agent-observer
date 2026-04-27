@@ -21783,6 +21783,11 @@ function previewText(value, limit) {
   if (!value) return "(empty)";
   return value.length > limit ? `${value.slice(0, limit)}\u2026` : value;
 }
+function shortPath(p) {
+  const parts = p.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts.length <= 2) return p;
+  return parts.slice(-2).join("/");
+}
 function tryParseJSON(value) {
   if (typeof value !== "string") return value;
   try {
@@ -21796,15 +21801,20 @@ function summarizeArgs(toolName, args) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
   const obj = parsed;
   const byTool = {
-    grep: ["pattern", "query"],
-    view: ["path", "file"],
-    powershell: ["command", "script"],
-    bash: ["command", "script"],
-    glob: ["pattern"]
+    grep: { keys: ["pattern", "query"] },
+    view: { keys: ["path", "file"], transform: shortPath },
+    glob: { keys: ["pattern", "path"], transform: (v) => shortPath(v) },
+    powershell: { keys: ["command", "script"] },
+    bash: { keys: ["command", "script"] }
   };
-  const keys = byTool[toolName.toLowerCase()] ?? [];
+  const spec = byTool[toolName.toLowerCase()];
+  const keys = spec?.keys ?? [];
   for (const k of keys) {
-    if (typeof obj[k] === "string" && obj[k]) return previewText(safeText(obj[k]), 80);
+    if (typeof obj[k] === "string" && obj[k]) {
+      const raw = safeText(obj[k]);
+      const display = spec?.transform ? spec.transform(raw) : raw;
+      return previewText(display, 80);
+    }
   }
   for (const v of Object.values(obj)) {
     if (typeof v === "string" && v.trim()) return previewText(safeText(v), 80);
@@ -22226,6 +22236,12 @@ function buildActivityModel(snapshot) {
   for (const record of snapshot.messages) {
     const key = makeNodeKey("message", record.id);
     const content = safeText(record.content);
+    const childKeys = graph.childNodeKeys[key] ?? [];
+    const childToolNames = childKeys.map((ck) => {
+      const { kind, id } = parseNodeKey(ck);
+      return kind === "toolcall" ? toolCallMap.get(id)?.toolName : void 0;
+    }).filter((n) => Boolean(n));
+    const displayTitle = content ? previewText(content, 88) : childToolNames.length > 0 ? `\u2192 ${childToolNames.slice(0, 3).join(", ")}${childToolNames.length > 3 ? ` (+${childToolNames.length - 3})` : ""}` : "(empty)";
     nodesByKey.set(key, {
       key,
       kind: "message",
@@ -22234,11 +22250,11 @@ function buildActivityModel(snapshot) {
       status: "complete",
       icon: "\u{1F4AC}",
       kindLabel: "msg",
-      title: previewText(content || "(empty)", 88),
+      title: displayTitle,
       subtitle: record.toolRequestCount > 0 ? `${record.toolRequestCount} tool req${record.toolRequestCount === 1 ? "" : "s"}` : "",
       searchText: `${content} ${record.reasoningText ?? ""}`.toLowerCase(),
       parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
-      childKeys: graph.childNodeKeys[key] ?? [],
+      childKeys,
       pathKeys: graph.pathNodeKeys[key] ?? [rootNodeKey, key],
       descendantCount: graph.descendantCounts[key] ?? 0,
       orphan: orphanKeys.has(key)

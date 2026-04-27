@@ -254,6 +254,12 @@ function previewText(value: string, limit: number): string {
     return value.length > limit ? `${value.slice(0, limit)}…` : value;
 }
 
+function shortPath(p: string): string {
+    const parts = p.replace(/\\/g, "/").split("/").filter(Boolean);
+    if (parts.length <= 2) return p;
+    return parts.slice(-2).join("/");
+}
+
 function tryParseJSON(value: unknown): unknown {
     if (typeof value !== "string") return value;
     try { return JSON.parse(value); } catch { return null; }
@@ -263,16 +269,21 @@ function summarizeArgs(toolName: string, args: unknown): string {
     const parsed = tryParseJSON(args) ?? args;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
     const obj = parsed as Record<string, unknown>;
-    const byTool: Record<string, string[]> = {
-        grep: ["pattern", "query"],
-        view: ["path", "file"],
-        powershell: ["command", "script"],
-        bash: ["command", "script"],
-        glob: ["pattern"],
+    const byTool: Record<string, { keys: string[]; transform?: (v: string) => string }> = {
+        grep:       { keys: ["pattern", "query"] },
+        view:       { keys: ["path", "file"], transform: shortPath },
+        glob:       { keys: ["pattern", "path"], transform: (v) => shortPath(v) },
+        powershell: { keys: ["command", "script"] },
+        bash:       { keys: ["command", "script"] },
     };
-    const keys = byTool[toolName.toLowerCase()] ?? [];
+    const spec = byTool[toolName.toLowerCase()];
+    const keys = spec?.keys ?? [];
     for (const k of keys) {
-        if (typeof obj[k] === "string" && obj[k]) return previewText(safeText(obj[k] as string), 80);
+        if (typeof obj[k] === "string" && obj[k]) {
+            const raw = safeText(obj[k] as string);
+            const display = spec?.transform ? spec.transform(raw) : raw;
+            return previewText(display, 80);
+        }
     }
     // generic: first string value
     for (const v of Object.values(obj)) {
@@ -762,6 +773,15 @@ function buildActivityModel(snapshot: Snapshot): ActivityModel {
     for (const record of snapshot.messages) {
         const key = makeNodeKey("message", record.id);
         const content = safeText(record.content);
+        const childKeys = graph.childNodeKeys[key] ?? [];
+        const childToolNames = childKeys
+            .map((ck) => { const { kind, id } = parseNodeKey(ck); return kind === "toolcall" ? toolCallMap.get(id)?.toolName : undefined; })
+            .filter((n): n is string => Boolean(n));
+        const displayTitle = content
+            ? previewText(content, 88)
+            : childToolNames.length > 0
+                ? `→ ${childToolNames.slice(0, 3).join(", ")}${childToolNames.length > 3 ? ` (+${childToolNames.length - 3})` : ""}`
+                : "(empty)";
         nodesByKey.set(key, {
             key,
             kind: "message",
@@ -770,11 +790,11 @@ function buildActivityModel(snapshot: Snapshot): ActivityModel {
             status: "complete",
             icon: "💬",
             kindLabel: "msg",
-            title: previewText(content || "(empty)", 88),
+            title: displayTitle,
             subtitle: record.toolRequestCount > 0 ? `${record.toolRequestCount} tool req${record.toolRequestCount === 1 ? "" : "s"}` : "",
             searchText: `${content} ${record.reasoningText ?? ""}`.toLowerCase(),
             parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
-            childKeys: graph.childNodeKeys[key] ?? [],
+            childKeys,
             pathKeys: graph.pathNodeKeys[key] ?? [rootNodeKey, key],
             descendantCount: graph.descendantCounts[key] ?? 0,
             orphan: orphanKeys.has(key),
