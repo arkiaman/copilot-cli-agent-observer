@@ -1031,7 +1031,7 @@ function TreeBranch({
     selectedNodeKey: string | null;
     selectedPath: Set<string>;
     collapsed: Record<string, boolean>;
-    onToggle: (key: string, defaultCollapsed: boolean) => void;
+    onToggle: (key: string, nextCollapsed: boolean) => void;
     onSelect: (selection: Selection) => void;
     query: string;
 }) {
@@ -1087,7 +1087,7 @@ function TreeBranch({
                         <button
                             type="button"
                             className="tree-toggle"
-                            onClick={() => onToggle(node.key, defaultCollapsed)}
+                            onClick={() => onToggle(node.key, isExpanded)}
                             aria-label={isExpanded ? "Collapse subtree" : "Expand subtree"}
                         >
                             {isExpanded ? "▾" : "▸"}
@@ -1172,8 +1172,8 @@ function ExecutionTreeView({
         [selectedNodeKey, model],
     );
 
-    const toggleNode = useCallback((key: string, defaultCollapsed: boolean) => {
-        setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? defaultCollapsed) }));
+    const toggleNode = useCallback((key: string, nextCollapsed: boolean) => {
+        setCollapsed((current) => ({ ...current, [key]: nextCollapsed }));
     }, []);
 
     if (!visibleTree) {
