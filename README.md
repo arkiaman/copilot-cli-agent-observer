@@ -4,8 +4,7 @@
 
 See what your AI agents are actually doing — every tool call, every subagent spawn, every message — in a live native dashboard that runs alongside your terminal.
 
-<!-- Screenshot: docs/images/hero-overview.png — will be added after internal rename and media capture -->
-<!-- ![Agent Observer overview](docs/images/hero-overview.png) -->
+![Agent Observer overview — execution tree with stats cards and detail pane](docs/images/hero-overview.png)
 
 ---
 
@@ -116,22 +115,17 @@ The agent has access to the `agent_observer_show` tool, so natural-language requ
 
 ### Reading the dashboard
 
-<!-- TODO: Replace with captured screenshots after internal rename -->
-
 **Execution tree** — hierarchical view showing Root Session → Subagents → Tool Calls / Messages. Expand any node to drill into its children.
 
-<!-- Screenshot: docs/images/timeline-feed.png — will be added after internal rename and media capture -->
-<!-- ![Timeline feed](docs/images/timeline-feed.png) -->
+![Timeline feed — chronological activity with tool badges and agent labels](docs/images/timeline-feed.png)
 
 **Activity timeline** — chronological feed of all events with tool-type badges, agent attribution, and result previews.
 
 **Detail pane** — click any node or timeline row to inspect full arguments, results, timestamps, and agent context.
 
-<!-- Screenshot: docs/images/detail-inspection.png — will be added after internal rename and media capture -->
-<!-- ![Detail inspection](docs/images/detail-inspection.png) -->
+![Detail inspection — drill into a Code Review Agent with full context](docs/images/detail-inspection.png)
 
-<!-- TODO: Add demo walkthrough GIF when captured -->
-<!-- ![Demo walkthrough](docs/media/demo-walkthrough.gif) -->
+<!-- Demo walkthrough GIF will be added when captured manually — see docs/media/CAPTURE-GUIDE.md -->
 
 ---
 
