@@ -729,7 +729,7 @@ export async function wireSession(store, session, opts = {}) {
 
     const snap = store.snapshot().stats;
     await log(
-        `subagent-observer: replay=${replayCount} persisted events, buffered=${bufferedCount} events, ` +
+        `agent-observer: replay=${replayCount} persisted events, buffered=${bufferedCount} events, ` +
         `store has ${snap.subagentCount} subagents, ${snap.toolCallCount} tool calls`,
     );
 

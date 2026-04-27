@@ -21882,7 +21882,7 @@ function renderFatal(message, detail) {
   root.innerHTML = `
       <div class="fatal-screen">
         <div class="fatal-box">
-          <div class="fatal-title">Subagent Observer failed to render</div>
+          <div class="fatal-title">Agent Observer failed to render</div>
           <div class="fatal-text">${escapeHtml(message)}</div>
           ${detailText ? `<pre class="fatal-pre">${escapeHtml(detailText)}</pre>` : ""}
         </div>
@@ -22440,12 +22440,12 @@ var FatalBoundary = class extends import_react.default.Component {
     return { error: error?.stack || error?.message || String(error) };
   }
   componentDidCatch(error) {
-    console.error("Subagent Observer render failed", error);
+    console.error("Agent Observer render failed", error);
   }
   render() {
     if (this.state.error) {
       return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fatal-screen", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "fatal-box", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fatal-title", children: "Subagent Observer failed to render" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fatal-title", children: "Agent Observer failed to render" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fatal-text", children: "React hit a runtime error while rendering the UI." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { className: "fatal-pre", children: this.state.error })
       ] }) });
@@ -23175,7 +23175,7 @@ function App() {
   const hasData = snapshot && snapshot.stats.ingestedEventCount > 0;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u{1F52D} Subagent Observer" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u{1F52D} Agent Observer" }),
       snapshot && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "badge", children: [
           snapshot.stats.subagentCount,

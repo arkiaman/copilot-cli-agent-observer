@@ -2,9 +2,9 @@
 
 ## Screenshot slots
 
-All screenshots must be captured **after** internal rename to `agent-observer` so
-the window title, header, and any visible branding say "Agent Observer" (not
-"Subagent Observer"). Use a sanitized demo workflow against a public-safe repo.
+All screenshots must be captured with the current `agent-observer` branding so
+the window title, header, and any visible branding say "Agent Observer".
+Use a sanitized demo workflow against a public-safe repo.
 
 ### 1. `hero-overview.png` → `docs/images/hero-overview.png`
 

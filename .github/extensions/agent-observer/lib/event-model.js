@@ -2,7 +2,7 @@
  * event-model.js — Normalized data model for subagent visualization
  *
  * This module defines the canonical record shapes, constants, and merge helpers
- * used by the subagent-observer extension.  It is intentionally decoupled from
+ * used by the agent-observer extension.  It is intentionally decoupled from
  * ingestion (session.on / session.getMessages) and rendering so that both can
  * import it without circular deps.
  *

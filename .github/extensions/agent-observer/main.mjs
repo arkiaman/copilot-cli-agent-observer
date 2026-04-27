@@ -1,8 +1,8 @@
 /**
- * subagent-observer — main extension entry
+ * agent-observer — main extension entry
  *
  * Combines:
- *   1. Webview shell (copilot-webview pattern) for future subagent visualization UI.
+ *   1. Webview shell (copilot-webview pattern) for agent visualization UI.
  *   2. Normalized event store fed by a buffered startup merge strategy:
  *      - Live listeners registered first (events buffered).
  *      - Replay via session.getMessages() populates the store.
@@ -62,9 +62,9 @@ async function startObserving() {
 // ── Webview setup ───────────────────────────────────────────────────────────
 
 const webview = new CopilotWebview({
-    extensionName: "subagent_observer",
+    extensionName: "agent_observer",
     contentDir: join(import.meta.dirname, "content"),
-    title: "Subagent Observer",
+    title: "Agent Observer",
     width: 1100,
     height: 750,
     callbacks: {
@@ -81,7 +81,7 @@ const observerDumpTool = {
     name: "observer_dump_summary",
     description: [
         "Returns a structured summary of all subagent and tool events captured by the",
-        "subagent-observer extension since it was loaded. Use this after triggering a",
+        "agent-observer extension since it was loaded. Use this after triggering a",
         "subagent run to verify that parent-session observability works.",
     ].join(" "),
     parameters: { type: "object", properties: {} },
@@ -101,7 +101,7 @@ const session = await joinSession({
                 unwirePrevious = null;
             }
             webview.close();
-            await session.log("subagent-observer: session ended, webview closed").catch(() => {});
+            await session.log("agent-observer: session ended, webview closed").catch(() => {});
         },
     },
     tools: [
@@ -109,8 +109,8 @@ const session = await joinSession({
         observerDumpTool,
     ],
     commands: [{
-        name: "subagent-observer",
-        description: "Open the subagent observer webview window.",
+        name: "agent-observer",
+        description: "Open the agent observer webview window.",
         handler: async () => { await webview.show(); },
     }],
 });

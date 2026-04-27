@@ -1,5 +1,5 @@
 /**
- * Subagent Observer — hierarchy-first execution tree UI
+ * Agent Observer — hierarchy-first execution tree UI
  *
  * Read-only dashboard showing:
  *   - Overview cards (stats + subagent status)
@@ -375,7 +375,7 @@ function renderFatal(message: string, detail?: unknown) {
     root.innerHTML = `
       <div class="fatal-screen">
         <div class="fatal-box">
-          <div class="fatal-title">Subagent Observer failed to render</div>
+          <div class="fatal-title">Agent Observer failed to render</div>
           <div class="fatal-text">${escapeHtml(message)}</div>
           ${detailText ? `<pre class="fatal-pre">${escapeHtml(detailText)}</pre>` : ""}
         </div>
@@ -1032,7 +1032,7 @@ class FatalBoundary extends React.Component<React.PropsWithChildren, FatalBounda
     }
 
     componentDidCatch(error: Error) {
-        console.error("Subagent Observer render failed", error);
+        console.error("Agent Observer render failed", error);
     }
 
     render() {
@@ -1040,7 +1040,7 @@ class FatalBoundary extends React.Component<React.PropsWithChildren, FatalBounda
             return (
                 <div className="fatal-screen">
                     <div className="fatal-box">
-                        <div className="fatal-title">Subagent Observer failed to render</div>
+                        <div className="fatal-title">Agent Observer failed to render</div>
                         <div className="fatal-text">React hit a runtime error while rendering the UI.</div>
                         <pre className="fatal-pre">{this.state.error}</pre>
                     </div>
@@ -1951,7 +1951,7 @@ function App() {
     return (
         <>
             <header>
-                <h1>🔭 Subagent Observer</h1>
+                <h1>🔭 Agent Observer</h1>
                 {snapshot && (
                     <>
                         <span className="badge">{snapshot.stats.subagentCount} subagent{snapshot.stats.subagentCount !== 1 ? "s" : ""}</span>
