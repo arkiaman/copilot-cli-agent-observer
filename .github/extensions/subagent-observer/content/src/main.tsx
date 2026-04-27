@@ -1031,7 +1031,7 @@ function TreeBranch({
     selectedNodeKey: string | null;
     selectedPath: Set<string>;
     collapsed: Record<string, boolean>;
-    onToggle: (key: string) => void;
+    onToggle: (key: string, defaultCollapsed: boolean) => void;
     onSelect: (selection: Selection) => void;
     query: string;
 }) {
@@ -1043,11 +1043,14 @@ function TreeBranch({
     const isTopLevelBranch = node.parentKey === model.rootNodeKey && node.kind !== "root";
     const hasChildren = branch.children.length > 0;
     const defaultCollapsed = node.kind === "root" ? false : true;
+    const explicitCollapsed = collapsed[node.key];
     const isExpanded = query
         ? true
-        : selectedPath.has(node.key)
+        : explicitCollapsed != null
+            ? !explicitCollapsed
+            : selectedPath.has(node.key)
             ? true
-            : !(collapsed[node.key] ?? defaultCollapsed);
+            : !defaultCollapsed;
     const depthGuides = Math.max(0, node.pathKeys.length - 2);
     const nodeDescription = getNodeDescription(model, node);
     const disambiguator = isTopLevelBranch
@@ -1084,7 +1087,7 @@ function TreeBranch({
                         <button
                             type="button"
                             className="tree-toggle"
-                            onClick={() => onToggle(node.key)}
+                            onClick={() => onToggle(node.key, defaultCollapsed)}
                             aria-label={isExpanded ? "Collapse subtree" : "Expand subtree"}
                         >
                             {isExpanded ? "▾" : "▸"}
@@ -1169,8 +1172,8 @@ function ExecutionTreeView({
         [selectedNodeKey, model],
     );
 
-    const toggleNode = useCallback((key: string) => {
-        setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? true) }));
+    const toggleNode = useCallback((key: string, defaultCollapsed: boolean) => {
+        setCollapsed((current) => ({ ...current, [key]: !(current[key] ?? defaultCollapsed) }));
     }, []);
 
     if (!visibleTree) {
