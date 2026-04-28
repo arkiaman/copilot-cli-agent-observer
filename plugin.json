@@ -16,5 +16,12 @@
     "observability",
     "extension",
     "tooling"
+  ],
+  "category": "developer-tools",
+  "tags": [
+    "agents",
+    "debugging",
+    "extensions",
+    "observability"
   ]
 }

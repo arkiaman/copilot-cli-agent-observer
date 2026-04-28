@@ -27,6 +27,15 @@ npm ci
 npm run watch    # Rebuild on changes
 ```
 
+To test plugin packaging from local checkout:
+
+```bash
+copilot plugin install C:\path\to\copilot-cli-agent-observer
+copilot plugin list
+```
+
+If you change local plugin files, run `copilot plugin install ...` again. Copilot CLI caches installed plugin components.
+
 ## Pull requests
 
 1. Fork the repo and create a feature branch from `master`.

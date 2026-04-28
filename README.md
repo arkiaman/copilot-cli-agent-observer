@@ -42,47 +42,58 @@ This is an **alpha release** focused on **read-only observability**:
 
 | Requirement | Details |
 |---|---|
-| **GitHub Copilot CLI** | Installed and working (`copilot` command available) |
-| **Experimental features** | Run `/experimental on` in a Copilot CLI session to enable plugin/extension support |
+| **GitHub Copilot CLI** | Installed and working (`copilot` command available). Tested against CLI `1.0.36` |
 | **Node.js** | v20.11+ with `node` and `npm` on PATH (the extension uses `import.meta.dirname`, bootstraps dependencies, and spawns `node` for the native window) |
 | **Platform** | Windows (x64), macOS (arm64/x64), Linux (x64). Native webview support varies — see [Compatibility](#compatibility) |
 
 ## Install
 
-### Option 1: Plugin install (recommended)
+### Option 1: Marketplace install (recommended)
 
-From any Copilot CLI session:
+Add this repo as a marketplace, then install the plugin by name:
+
+```
+copilot plugin marketplace add Rogn/copilot-cli-agent-observer
+copilot plugin install copilot-cli-agent-observer@copilot-cli-agent-observer
+```
+
+This uses the marketplace manifest in `.github/plugin/marketplace.json` and avoids the deprecation warning shown for direct repo installs in current CLI builds.
+
+### Option 2: Direct repo install (still works, but deprecated by CLI)
+
+From a shell:
+
+```shell
+copilot plugin install Rogn/copilot-cli-agent-observer
+```
+
+Or from an interactive session:
 
 ```
 /plugin install Rogn/copilot-cli-agent-observer
 ```
 
-Published repo: `Rogn/copilot-cli-agent-observer`
+The repo's root `plugin.json` manifest makes the repository installable directly today, but Copilot CLI `1.0.36` warns that direct installs from repos, URLs, and local paths are deprecated in favor of marketplace installs.
 
-This works via the repo's root `plugin.json` manifest. The install clones the repo into your Copilot CLI extensions directory, and the bundled extension under `.github/extensions/agent-observer/` bootstraps automatically on next session start.
+### Option 3: Local development install
 
-### Option 2: Manual install
-
-Clone into the Copilot CLI extensions directory:
+Install from a local checkout when developing or testing packaging changes:
 
 ```bash
-# Find your extensions directory (typically ~/.copilot/extensions/ or similar)
-cd <copilot-extensions-dir>
-
-git clone https://github.com/Rogn/copilot-cli-agent-observer.git agent-observer
+copilot plugin install C:\path\to\copilot-cli-agent-observer
 ```
 
-Replace `<copilot-extensions-dir>` with your local Copilot CLI extensions path.
+Use an absolute path or `./relative-path`. Plain `.` is rejected by the current CLI parser.
 
-The extension self-bootstraps on first load — it prefers `npm ci --omit=dev --no-audit --no-fund` when a lockfile is present, falling back to `npm install` only when needed.
+Installed plugins are stored under `~/.copilot/installed-plugins/...`, and the bundled extension under `.github/extensions/agent-observer/` is loaded from there. If you change a locally installed plugin, reinstall it so Copilot CLI refreshes its cached components.
 
 ---
 
 ## What happens on first load
 
-When Copilot CLI starts a session with the extension installed:
+When Copilot CLI starts a session with plugin installed:
 
-1. **Bootstrap** — the extension checks for `node_modules/` and installs dependencies if needed (first run only, takes a few seconds). When `package-lock.json` is current it uses deterministic `npm ci --omit=dev --no-audit --no-fund`.
+1. **Bootstrap** — extension checks for `node_modules/` and installs dependencies if needed (first run only, takes a few seconds). When `package-lock.json` is present it uses deterministic `npm ci --omit=dev --no-audit --no-fund`.
 2. **Session attach** — the observer wires into the active session's event stream, capturing all agent and tool activity
 3. **Ready** — tools and commands are registered; the observer is silently collecting data in the background
 
@@ -142,7 +153,7 @@ The extension entry point and event store are plain `.mjs` files — no build st
 
 ```bash
 cd .github/extensions/agent-observer/
-npm install          # Install runtime dependencies (@webviewjs/webview, ws)
+npm ci               # Install runtime dependencies (@webviewjs/webview, ws)
 ```
 
 ### UI (React + TypeScript)
@@ -151,17 +162,29 @@ The dashboard UI is a React app bundled with esbuild:
 
 ```bash
 cd .github/extensions/agent-observer/content/
-npm install          # Install React, esbuild
+npm ci               # Install React, esbuild
 npm run build        # One-shot production build → dist/main.js
 npm run watch        # Rebuild on file changes (dev mode)
 ```
 
 After rebuilding, reload the observer window to pick up changes (close and reopen, or use `agent_observer_show` with `reload: true`).
 
+### Local plugin packaging test
+
+To validate plugin packaging from local checkout:
+
+```bash
+copilot plugin install C:\path\to\copilot-cli-agent-observer
+copilot plugin list
+```
+
+Re-run `copilot plugin install ...` after local changes. Copilot CLI caches plugin components between installs.
+
 ### Project structure
 
 ```
 plugin.json
+.github/plugin/marketplace.json
 .github/extensions/agent-observer/
 ├── extension.mjs          # Bootstrap entry (npm install if needed, then loads main)
 ├── main.mjs               # Extension logic: session wiring, tools, commands

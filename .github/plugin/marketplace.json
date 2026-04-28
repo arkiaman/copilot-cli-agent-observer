@@ -1,0 +1,40 @@
+{
+  "name": "copilot-cli-agent-observer",
+  "owner": {
+    "name": "Rogn"
+  },
+  "metadata": {
+    "description": "Marketplace entry for Copilot CLI Agent Observer.",
+    "version": "0.1.0-alpha"
+  },
+  "plugins": [
+    {
+      "name": "copilot-cli-agent-observer",
+      "source": ".",
+      "description": "Real-time observability for GitHub Copilot CLI agent sessions via the Agent Observer extension.",
+      "version": "0.1.0-alpha",
+      "author": {
+        "name": "Rogn",
+        "url": "https://github.com/Rogn"
+      },
+      "homepage": "https://github.com/Rogn/copilot-cli-agent-observer",
+      "repository": "https://github.com/Rogn/copilot-cli-agent-observer.git",
+      "license": "MIT",
+      "keywords": [
+        "github-copilot-cli",
+        "copilot-cli",
+        "agent-observer",
+        "observability",
+        "extension",
+        "tooling"
+      ],
+      "category": "developer-tools",
+      "tags": [
+        "agents",
+        "debugging",
+        "extensions",
+        "observability"
+      ]
+    }
+  ]
+}

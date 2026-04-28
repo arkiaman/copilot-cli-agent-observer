@@ -23,6 +23,11 @@ First public alpha release — read-only observability for GitHub Copilot CLI ag
 ### Fixed
 
 - **Plugin packaging** — add a root `plugin.json` manifest so `/plugin install Rogn/copilot-cli-agent-observer` is recognized as a Copilot CLI plugin repository
+- **Plugin docs alignment** — update install guidance for current Copilot CLI behavior, including marketplace-first install flow, direct-install deprecation note, and correct `installed-plugins` storage path
+
+### Changed
+
+- **Marketplace support** — add `.github/plugin/marketplace.json` so repo can be added as its own Copilot CLI marketplace
 
 ### Architecture
 
