@@ -42,59 +42,71 @@ This is an **alpha release** focused on **read-only observability**:
 
 | Requirement | Details |
 |---|---|
-| **GitHub Copilot CLI** | Installed and working (`copilot` command available). Tested against CLI `1.0.36` |
+| **GitHub Copilot CLI** | Installed and working (`copilot` command available). Tested against CLI `1.0.37` |
 | **Experimental mode** | **Required for Agent Observer runtime.** Enable with `/experimental on` or start CLI with `copilot --experimental`. The observer depends on the `EXTENSIONS` experimental feature flag |
 | **Node.js** | v20.11+ with `node` and `npm` on PATH (the extension uses `import.meta.dirname`, bootstraps dependencies, and spawns `node` for the native window) |
 | **Platform** | Windows (x64), macOS (arm64/x64), Linux (x64). Native webview support varies — see [Compatibility](#compatibility) |
 
 ## Install
 
-### Option 1: Marketplace install (recommended)
+**Agent Observer is a Copilot CLI extension, not a Copilot CLI plugin.** Current Copilot CLI plugin installation does **not** activate bundled `.github/extensions/...` content, so installing this repo with `copilot plugin install ...` will not make `/agent-observer` appear.
 
-Add this repo as a marketplace, then install the plugin by name:
+### Option 1: User extension install (recommended)
 
-```
-copilot plugin marketplace add Rogn/copilot-cli-agent-observer
-copilot plugin install copilot-cli-agent-observer@copilot-cli-agent-observer
-```
+1. Clone or download this repo.
+2. Copy `.github/extensions/agent-observer` into your user extensions directory as `~/.copilot/extensions/agent-observer`.
+3. Start Copilot CLI with experimental mode enabled.
 
-This uses the marketplace manifest in `.github/plugin/marketplace.json` and avoids the deprecation warning shown for direct repo installs in current CLI builds.
+**PowerShell**
 
-**Important:** plugin installation works through the standard plugin manager, but Agent Observer itself will not load unless Copilot CLI experimental mode is enabled, because the runtime depends on the `EXTENSIONS` experimental feature flag.
-
-### Option 2: Direct repo install (still works, but deprecated by CLI)
-
-From a shell:
-
-```shell
-copilot plugin install Rogn/copilot-cli-agent-observer
-```
-
-Or from an interactive session:
-
-```
-/plugin install Rogn/copilot-cli-agent-observer
+```powershell
+git clone https://github.com/Rogn/copilot-cli-agent-observer.git
+New-Item -ItemType Directory -Force $HOME\.copilot\extensions | Out-Null
+Copy-Item `
+  .\copilot-cli-agent-observer\.github\extensions\agent-observer `
+  $HOME\.copilot\extensions\agent-observer `
+  -Recurse -Force
+copilot --experimental
 ```
 
-The repo's root `plugin.json` manifest makes the repository installable directly today, but Copilot CLI `1.0.36` warns that direct installs from repos, URLs, and local paths are deprecated in favor of marketplace installs.
+**bash**
+
+```bash
+git clone https://github.com/Rogn/copilot-cli-agent-observer.git
+mkdir -p ~/.copilot/extensions
+cp -R ./copilot-cli-agent-observer/.github/extensions/agent-observer ~/.copilot/extensions/agent-observer
+copilot --experimental
+```
+
+Inside Copilot CLI, run `/env` to confirm `agent-observer` is listed under **Extensions**.
+
+### Option 2: Project-local extension install
+
+If you want Agent Observer only for one project, copy the same folder into that project's `.github/extensions/agent-observer` and run Copilot from that project root:
+
+```text
+your-project/
+└── .github/
+    └── extensions/
+        └── agent-observer/
+```
+
+This is convenient for contributors and for sharing a pinned extension version inside a repository.
 
 ### Option 3: Local development install
 
-Install from a local checkout when developing or testing packaging changes:
+For local development, either:
 
-```bash
-copilot plugin install C:\path\to\copilot-cli-agent-observer
-```
+- work directly from a repo that contains `.github/extensions/agent-observer`, or
+- copy your working tree's `.github/extensions/agent-observer` into `~/.copilot/extensions/agent-observer`
 
-Use an absolute path or `./relative-path`. Plain `.` is rejected by the current CLI parser.
-
-Installed plugins are stored under `~/.copilot/installed-plugins/...`, and the bundled extension under `.github/extensions/agent-observer/` is loaded from there. If you change a locally installed plugin, reinstall it so Copilot CLI refreshes its cached components.
+After local changes, restart Copilot CLI so the updated extension is reloaded.
 
 ---
 
 ## What happens on first load
 
-When Copilot CLI starts a session with plugin installed **and experimental mode enabled**:
+When Copilot CLI starts a session with Agent Observer available as a user or project extension **and experimental mode enabled**:
 
 1. **Bootstrap** — extension checks for `node_modules/` and installs dependencies if needed (first run only, takes a few seconds). When `package-lock.json` is present it uses deterministic `npm ci --omit=dev --no-audit --no-fund`.
 2. **Session attach** — the observer wires into the active session's event stream, capturing all agent and tool activity
@@ -172,22 +184,18 @@ npm run watch        # Rebuild on file changes (dev mode)
 
 After rebuilding, reload the observer window to pick up changes (close and reopen, or use `agent_observer_show` with `reload: true`).
 
-### Local plugin packaging test
+### Local extension install test
 
-To validate plugin packaging from local checkout:
+To validate a local checkout end to end:
 
-```bash
-copilot plugin install C:\path\to\copilot-cli-agent-observer
-copilot plugin list
-```
-
-Re-run `copilot plugin install ...` after local changes. Copilot CLI caches plugin components between installs.
+1. Copy `.github/extensions/agent-observer` into `~/.copilot/extensions/agent-observer`
+2. Start a clean session with `copilot --experimental`
+3. Run `/env` and confirm `agent-observer` appears under **Extensions**
+4. Run `/agent-observer` to open the window
 
 ### Project structure
 
 ```
-plugin.json
-.github/plugin/marketplace.json
 .github/extensions/agent-observer/
 ├── extension.mjs          # Bootstrap entry (npm install if needed, then loads main)
 ├── main.mjs               # Extension logic: session wiring, tools, commands
@@ -220,7 +228,8 @@ The native window is powered by [`@webviewjs/webview`](https://github.com/webvie
 ### Known limitations
 
 - **Alpha quality** — expect rough edges, especially around session transitions and edge-case event types
-- **Experimental runtime dependency** — this plugin installs through the normal plugin manager, but actual observer tools/commands depend on Copilot CLI's `EXTENSIONS` experimental feature flag
+- **Experimental runtime dependency** — Agent Observer depends on Copilot CLI's `EXTENSIONS` experimental feature flag
+- **Manual installation for now** — current Copilot CLI plugin packaging does not load bundled extensions, so Agent Observer must be installed as a user or project extension
 - **Extension API churn** — the underlying extension/runtime APIs used by Agent Observer are still early and may change across Copilot CLI releases
 - **Read-only** — the observer cannot influence agent behavior; it is a passive listener
 - **Single session** — observes one Copilot CLI session at a time; switching sessions resets the view

@@ -27,14 +27,14 @@ npm ci
 npm run watch    # Rebuild on changes
 ```
 
-To test plugin packaging from local checkout:
+To test a local checkout as a real Copilot CLI extension:
 
-```bash
-copilot plugin install C:\path\to\copilot-cli-agent-observer
-copilot plugin list
-```
+1. Copy `.github/extensions/agent-observer` into `~/.copilot/extensions/agent-observer`
+2. Start a clean session with `copilot --experimental`
+3. Run `/env` and confirm `agent-observer` appears under **Extensions**
+4. Run `/agent-observer`
 
-If you change local plugin files, run `copilot plugin install ...` again. Copilot CLI caches installed plugin components.
+If you change local extension files, restart Copilot CLI after copying the updated folder.
 
 ## Pull requests
 

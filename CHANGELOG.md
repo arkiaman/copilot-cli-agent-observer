@@ -22,12 +22,12 @@ First public alpha release — read-only observability for GitHub Copilot CLI ag
 
 ### Fixed
 
-- **Plugin packaging** — add a root `plugin.json` manifest so `/plugin install Rogn/copilot-cli-agent-observer` is recognized as a Copilot CLI plugin repository
-- **Plugin docs alignment** — update install guidance for current Copilot CLI behavior, including marketplace-first install flow, direct-install deprecation note, and correct `installed-plugins` storage path
+- **Install guidance** — document the real supported install path as a Copilot CLI extension under `~/.copilot/extensions/agent-observer` or project `.github/extensions/agent-observer`
+- **Missing slash command diagnosis** — clarify that `copilot plugin install ...` does not activate bundled `.github/extensions`, which is why `/agent-observer` may be missing after plugin-style installation
 
 ### Changed
 
-- **Marketplace support** — add `.github/plugin/marketplace.json` so repo can be added as its own Copilot CLI marketplace
+- **Packaging stance** — stop advertising plugin/marketplace installation for this project until Copilot CLI supports shipping extensions through that path
 
 ### Architecture
 
