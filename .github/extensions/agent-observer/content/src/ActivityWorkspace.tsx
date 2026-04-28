@@ -244,7 +244,14 @@ function ExecutionTreeView({
     }, []);
 
     if (!visibleTree) {
-        return <div className="activity-empty">No tree nodes match the current filters.</div>;
+        const hasAnyNodes = model.nodesByKey.size > 1; // root always exists
+        return (
+            <div className="activity-empty">
+                {hasAnyNodes
+                    ? "No tree nodes match the current filters."
+                    : "Waiting for activity from the main agent or subagents…"}
+            </div>
+        );
     }
 
     return (
@@ -290,7 +297,14 @@ function FlatTimelineView({
     );
 
     if (visible.length === 0) {
-        return <div className="activity-empty">No chronological matches for current filters.</div>;
+        const hasAnyItems = items.length > 0;
+        return (
+            <div className="activity-empty">
+                {hasAnyItems
+                    ? "No chronological matches for current filters."
+                    : "Waiting for activity from the main agent or subagents…"}
+            </div>
+        );
     }
 
     return (

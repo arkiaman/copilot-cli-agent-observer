@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { Snapshot, Selection, Stats, SubagentRecord, FatalBoundaryState, FilterState, FilterKey } from "./types.js";
+import { SYNTHETIC_ROOT_ID } from "./types.js";
 import { buildActivityModel, buildAgentHierarchy, selectionExists } from "./model.js";
 import { ActivityWorkspace } from "./ActivityWorkspace.js";
 import { AgentHierarchyPanel } from "./AgentHierarchy.js";
@@ -207,7 +208,7 @@ function OverviewCards({ stats, subagents }: { stats: Stats; subagents: Subagent
         <section className="overview">
             <div className="card">
                 <div className="card-value">{stats.subagentCount}</div>
-                <div className="card-label">Background Subagents</div>
+                <div className="card-label">Subagents</div>
                 {stats.subagentCount > 0 && (
                     <div className="card-detail">
                         {running > 0 && <span className="status-running">⏳{running}</span>}
@@ -343,6 +344,15 @@ export function App() {
     useEffect(() => {
         if (selection && !selectionExists(selection, model)) {
             setSelection(null);
+        }
+    }, [model, selection]);
+
+    // Auto-select root on first load so the details pane is immediately useful
+    const didAutoSelect = useRef(false);
+    useEffect(() => {
+        if (model && !selection && !didAutoSelect.current) {
+            didAutoSelect.current = true;
+            setSelection({ kind: "root", id: SYNTHETIC_ROOT_ID });
         }
     }, [model, selection]);
 

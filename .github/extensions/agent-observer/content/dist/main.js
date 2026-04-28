@@ -22641,7 +22641,8 @@ function ExecutionTreeView({
     setCollapsed((current) => ({ ...current, [key]: nextCollapsed }));
   }, []);
   if (!visibleTree) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-empty", children: "No tree nodes match the current filters." });
+    const hasAnyNodes = model.nodesByKey.size > 1;
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-empty", children: hasAnyNodes ? "No tree nodes match the current filters." : "Waiting for activity from the main agent or subagents\u2026" });
   }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-list", children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-head", children: [
@@ -22676,7 +22677,8 @@ function FlatTimelineView({
     [filters, items, query]
   );
   if (visible.length === 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-empty", children: "No chronological matches for current filters." });
+    const hasAnyItems = items.length > 0;
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-empty", children: hasAnyItems ? "No chronological matches for current filters." : "Waiting for activity from the main agent or subagents\u2026" });
   }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flat-list", children: visible.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
     EventRow,
@@ -23389,7 +23391,7 @@ function OverviewCards({ stats, subagents }) {
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "overview", children: [
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "card", children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-value", children: stats.subagentCount }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-label", children: "Background Subagents" }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-label", children: "Subagents" }),
       stats.subagentCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "card-detail", children: [
         running > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "status-running", children: [
           "\u23F3",
@@ -23516,6 +23518,13 @@ function App() {
   (0, import_react4.useEffect)(() => {
     if (selection && !selectionExists(selection, model)) {
       setSelection(null);
+    }
+  }, [model, selection]);
+  const didAutoSelect = (0, import_react4.useRef)(false);
+  (0, import_react4.useEffect)(() => {
+    if (model && !selection && !didAutoSelect.current) {
+      didAutoSelect.current = true;
+      setSelection({ kind: "root", id: SYNTHETIC_ROOT_ID });
     }
   }, [model, selection]);
   const { layout, toggle } = useSectionLayout();
