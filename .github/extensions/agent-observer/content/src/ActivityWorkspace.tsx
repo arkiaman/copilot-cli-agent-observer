@@ -17,7 +17,7 @@ import {
     formatNodeStatusSummary,
     getRecentActivityPreview,
 } from "./model.js";
-import { AgentHierarchyPanel } from "./AgentHierarchy.js";
+
 
 /* ── EventRow ───────────────────────────────────────────────────────────── */
 
@@ -415,22 +415,13 @@ export function ActivityWorkspace({
             </div>
 
             {viewMode === "tree" ? (
-                <>
-                    <AgentHierarchyPanel
-                        model={model}
-                        selection={selection}
-                        onSelect={onSelect}
-                        filters={filters}
-                        query={query}
-                    />
-                    <ExecutionTreeView
-                        model={model}
-                        visibleTree={visibleTree}
-                        query={query}
-                        selection={selection}
-                        onSelect={onSelect}
-                    />
-                </>
+                <ExecutionTreeView
+                    model={model}
+                    visibleTree={visibleTree}
+                    query={query}
+                    selection={selection}
+                    onSelect={onSelect}
+                />
             ) : (
                 <FlatTimelineView
                     items={model.items}

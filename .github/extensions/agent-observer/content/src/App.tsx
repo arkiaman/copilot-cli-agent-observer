@@ -3,9 +3,10 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import type { Snapshot, Selection, Stats, SubagentRecord, FatalBoundaryState } from "./types.js";
-import { buildActivityModel, selectionExists } from "./model.js";
+import type { Snapshot, Selection, Stats, SubagentRecord, FatalBoundaryState, FilterState, FilterKey } from "./types.js";
+import { buildActivityModel, buildAgentHierarchy, selectionExists } from "./model.js";
 import { ActivityWorkspace } from "./ActivityWorkspace.js";
+import { AgentHierarchyPanel } from "./AgentHierarchy.js";
 import { DetailPane } from "./DetailPane.js";
 
 /* ── OverviewCards ──────────────────────────────────────────────────────── */
@@ -175,9 +176,20 @@ export function App() {
             {!error && snapshot && hasData && model && (
                 <>
                     <OverviewCards stats={snapshot.stats} subagents={snapshot.subagents} />
+
+                    <section className="hierarchy-section">
+                        <AgentHierarchyPanel
+                            model={model}
+                            selection={selection}
+                            onSelect={setSelection}
+                            filters={{ subagents: true, tools: true, messages: true, running: true, complete: true, failed: true, root: true }}
+                            query=""
+                        />
+                    </section>
+
                     <div className="panels">
                         <section className="panel-list">
-                            <div className="panel-header">Background Tasks</div>
+                            <div className="panel-header">Background Activity</div>
                             <ActivityWorkspace model={model} selection={selection} onSelect={setSelection} />
                         </section>
                         <section className="panel-detail">

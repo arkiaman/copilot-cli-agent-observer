@@ -22468,140 +22468,8 @@ function buildAgentHierarchy(model, filters, query) {
 }
 
 // src/ActivityWorkspace.tsx
-var import_react2 = __toESM(require_react(), 1);
-
-// src/AgentHierarchy.tsx
 var import_react = __toESM(require_react(), 1);
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
-function HierarchyCard({
-  agentNode,
-  model,
-  selection,
-  onSelect,
-  defaultExpanded,
-  query
-}) {
-  const [manualExpanded, setManualExpanded] = (0, import_react.useState)(null);
-  const { node, record, children, depth, recentPreview } = agentNode;
-  const isRoot = node.kind === "root";
-  const isSelected = selectionKey(selection) === `${node.kind}:${node.id}`;
-  const hasChildren = children.length > 0;
-  const expanded = query ? true : manualExpanded ?? defaultExpanded;
-  const displayName = isRoot ? "Main agent" : record?.agentDisplayName || record?.agentName || shortId(node.id);
-  const statusText = isRoot ? null : titleCase(normalizeStatus(node.status));
-  const icon = isRoot ? "\u{1F9ED}" : statusIcon(node.status);
-  const sClass = isRoot ? "" : statusClass(node.status);
-  const durationMs = isRoot ? void 0 : inferDurationMsForNode(model, node);
-  const eventCount = node.descendantCount;
-  const recentLine = recentPreview;
-  const handleClick = () => {
-    onSelect(selectionForNode(node));
-  };
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `hierarchy-card-wrap ${isRoot ? "hierarchy-root-wrap" : ""}`, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-      "button",
-      {
-        type: "button",
-        className: `hierarchy-card ${isRoot ? "hierarchy-root-card" : ""} ${isSelected ? "selected" : ""}`,
-        onClick: handleClick,
-        title: displayName,
-        children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "hierarchy-card-top", children: [
-            hasChildren && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "span",
-              {
-                className: "hierarchy-card-toggle",
-                onClick: (e) => {
-                  e.stopPropagation();
-                  setManualExpanded((v) => !(v ?? defaultExpanded));
-                },
-                role: "button",
-                tabIndex: -1,
-                children: expanded ? "\u25BE" : "\u25B8"
-              }
-            ),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `hierarchy-card-icon ${sClass}`, children: icon }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-card-name", children: displayName }),
-            statusText && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `hierarchy-card-status ${sClass}`, children: statusText }),
-            durationMs != null && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-card-duration", children: fmtDuration(durationMs) })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "hierarchy-card-bottom", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "hierarchy-card-counts", children: [
-              pluralize(eventCount, "descendant"),
-              !isRoot && record?.totalToolCalls != null && ` \xB7 ${record.totalToolCalls} tools`
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-card-recent", children: recentLine })
-          ] })
-        ]
-      }
-    ),
-    isRoot && children.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "hierarchy-empty", children: "No subagents spawned" }),
-    hasChildren && expanded && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "hierarchy-children", children: children.map((child) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      HierarchyCard,
-      {
-        agentNode: child,
-        model,
-        selection,
-        onSelect,
-        defaultExpanded: child.depth < 2,
-        query
-      },
-      child.key
-    )) })
-  ] });
-}
-function AgentHierarchyPanel({
-  model,
-  selection,
-  onSelect,
-  filters,
-  query
-}) {
-  const hierarchy = (0, import_react.useMemo)(
-    () => buildAgentHierarchy(model, filters, query),
-    [model, filters, query]
-  );
-  const hasSubagents = model.subagentMap.size > 0;
-  const [panelOpen, setPanelOpen] = (0, import_react.useState)(null);
-  const isOpen = query ? true : panelOpen ?? hasSubagents;
-  if (!hierarchy) return null;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `hierarchy-panel ${isOpen ? "hierarchy-panel-open" : "hierarchy-panel-closed"}`, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-      "button",
-      {
-        type: "button",
-        className: "hierarchy-header",
-        onClick: () => {
-          if (query) return;
-          setPanelOpen((v) => !(v ?? hasSubagents));
-        },
-        children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-header-toggle", children: isOpen ? "\u25BE" : "\u25B8" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-header-title", children: "Agent Hierarchy" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "hierarchy-header-count", children: [
-            model.subagentMap.size,
-            " subagent",
-            model.subagentMap.size !== 1 ? "s" : ""
-          ] })
-        ]
-      }
-    ),
-    isOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "hierarchy-body", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      HierarchyCard,
-      {
-        agentNode: hierarchy,
-        model,
-        selection,
-        onSelect,
-        defaultExpanded: true,
-        query
-      }
-    ) })
-  ] });
-}
-
-// src/ActivityWorkspace.tsx
-var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
 function EventRow({
   item,
   selection,
@@ -22610,7 +22478,7 @@ function EventRow({
 }) {
   const isSelected = selectionKey(selection) === itemSelectionKey(item);
   const paddingLeft = 12 + item.depth * 18;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
     "button",
     {
       type: "button",
@@ -22619,16 +22487,16 @@ function EventRow({
       onClick: () => onSelect({ kind: item.kind, id: item.id }),
       title: item.title,
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `activity-icon ${statusClass(item.status)}`, children: item.icon }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "event-main", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "event-title", children: item.title }),
-          item.subtitle && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "event-subtitle", children: item.subtitle }),
-          item.resultLine && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "event-result-line", children: item.resultLine })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `activity-icon ${statusClass(item.status)}`, children: item.icon }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "event-main", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "event-title", children: item.title }),
+          item.subtitle && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "event-subtitle", children: item.subtitle }),
+          item.resultLine && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "event-result-line", children: item.resultLine })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `kind-pill kind-pill-${item.kind}`, children: item.kindLabel }),
-        item.orphan && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "owner-pill owner-pill-orphan", children: "orphan" }),
-        showOwner && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "owner-pill", children: item.ownerLabel }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "activity-ts", children: fmtTime(item.ts) })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `kind-pill kind-pill-${item.kind}`, children: item.kindLabel }),
+        item.orphan && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "owner-pill owner-pill-orphan", children: "orphan" }),
+        showOwner && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "owner-pill", children: item.ownerLabel }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "activity-ts", children: fmtTime(item.ts) })
       ]
     }
   );
@@ -22667,7 +22535,7 @@ function TreeBranch({
   }) : branch.children;
   if (!showSelf) {
     if (visibleChildren.length === 0) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-children tree-children-promoted", children: visibleChildren.map((child) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-children tree-children-promoted", children: visibleChildren.map((child) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       TreeBranch,
       {
         branch: child,
@@ -22682,12 +22550,12 @@ function TreeBranch({
       child.key
     )) });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `tree-branch ${node.kind === "root" ? "tree-branch-root" : ""}`, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `tree-row ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""} ${isTopLevelBranch ? "tree-row-top-level" : ""}`, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "tree-row-main", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-guides", "aria-hidden": "true", children: Array.from({ length: depthGuides }).map((_, index) => {
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `tree-branch ${node.kind === "root" ? "tree-branch-root" : ""}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `tree-row ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""} ${isTopLevelBranch ? "tree-row-top-level" : ""}`, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-row-main", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-guides", "aria-hidden": "true", children: Array.from({ length: depthGuides }).map((_, index) => {
           const ancestorKey = node.pathKeys[index + 1];
-          return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "span",
             {
               className: `tree-guide ${selectedPath.has(ancestorKey) ? "active" : ""}`
@@ -22695,7 +22563,7 @@ function TreeBranch({
             `${node.key}-guide-${ancestorKey}-${index}`
           );
         }) }),
-        hasChildren ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        hasChildren ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
             type: "button",
@@ -22704,8 +22572,8 @@ function TreeBranch({
             "aria-label": isExpanded ? "Collapse subtree" : "Expand subtree",
             children: isExpanded ? "\u25BE" : "\u25B8"
           }
-        ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-toggle-spacer" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-toggle-spacer" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
           "button",
           {
             type: "button",
@@ -22713,31 +22581,31 @@ function TreeBranch({
             onClick: () => onSelect(selectionForNode(node)),
             title: node.title,
             children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `activity-icon ${statusClass(node.status)}`, children: node.icon }),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: `tree-title-wrap ${isTopLevelBranch ? "tree-title-wrap-top-level" : ""}`, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-title", children: node.title }),
-                (isTopLevelBranch ? nodeDescription : node.subtitle) && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-subtitle", children: isTopLevelBranch ? nodeDescription : node.subtitle }),
-                isTopLevelBranch && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "tree-summary-line", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "tree-summary-primary", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `activity-icon ${statusClass(node.status)}`, children: node.icon }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: `tree-title-wrap ${isTopLevelBranch ? "tree-title-wrap-top-level" : ""}`, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-title", children: node.title }),
+                (isTopLevelBranch ? nodeDescription : node.subtitle) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-subtitle", children: isTopLevelBranch ? nodeDescription : node.subtitle }),
+                isTopLevelBranch && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "tree-summary-line", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "tree-summary-primary", children: [
                     "Recent: ",
                     recentPreview
                   ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-summary-divider", children: "\u2022" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-summary-secondary", children: disambiguator })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-summary-divider", children: "\u2022" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-summary-secondary", children: disambiguator })
                 ] })
               ] })
             ]
           }
         )
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "tree-row-meta", children: [
-        !isTopLevelBranch && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-meta-text tree-meta-kind", children: getNodeTypeLabel(model, node) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `tree-meta-text tree-meta-status ${statusClass(node.status)}`, children: formatNodeStatusSummary(model, node) }),
-        node.orphan && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-meta-text tree-meta-warn", children: "orphan" })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-row-meta", children: [
+        !isTopLevelBranch && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-meta-text tree-meta-kind", children: getNodeTypeLabel(model, node) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `tree-meta-text tree-meta-status ${statusClass(node.status)}`, children: formatNodeStatusSummary(model, node) }),
+        node.orphan && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-meta-text tree-meta-warn", children: "orphan" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-row-time", children: fmtTime(node.ts) })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-row-time", children: fmtTime(node.ts) })
     ] }),
-    visibleChildren.length > 0 && isExpanded && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-children", children: visibleChildren.map((child) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    visibleChildren.length > 0 && isExpanded && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-children", children: visibleChildren.map((child) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       TreeBranch,
       {
         branch: child,
@@ -22760,28 +22628,28 @@ function ExecutionTreeView({
   selection,
   onSelect
 }) {
-  const [collapsed, setCollapsed] = (0, import_react2.useState)({});
-  const selectedNodeKey = (0, import_react2.useMemo)(
+  const [collapsed, setCollapsed] = (0, import_react.useState)({});
+  const selectedNodeKey = (0, import_react.useMemo)(
     () => selectionToStructuralNodeKey(selection, model),
     [selection, model]
   );
-  const selectedPath = (0, import_react2.useMemo)(
+  const selectedPath = (0, import_react.useMemo)(
     () => new Set(selectedNodeKey ? model.nodesByKey.get(selectedNodeKey)?.pathKeys ?? [] : []),
     [selectedNodeKey, model]
   );
-  const toggleNode = (0, import_react2.useCallback)((key, nextCollapsed) => {
+  const toggleNode = (0, import_react.useCallback)((key, nextCollapsed) => {
     setCollapsed((current) => ({ ...current, [key]: nextCollapsed }));
   }, []);
   if (!visibleTree) {
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "activity-empty", children: "No tree nodes match the current filters." });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-empty", children: "No tree nodes match the current filters." });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "tree-list", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "tree-head", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-head-cell", children: "Background activity" }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-head-cell tree-head-meta", children: "Status" }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-head-cell tree-head-time", children: "Updated" })
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-list", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-head", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-head-cell", children: "Background activity" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-head-cell tree-head-meta", children: "Status" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-head-cell tree-head-time", children: "Updated" })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       TreeBranch,
       {
         branch: visibleTree,
@@ -22803,14 +22671,14 @@ function FlatTimelineView({
   selection,
   onSelect
 }) {
-  const visible = (0, import_react2.useMemo)(
+  const visible = (0, import_react.useMemo)(
     () => items.filter((item) => matchesItemFilters(item, filters, query)),
     [filters, items, query]
   );
   if (visible.length === 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "activity-empty", children: "No chronological matches for current filters." });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-empty", children: "No chronological matches for current filters." });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "flat-list", children: visible.map((item) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flat-list", children: visible.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
     EventRow,
     {
       item,
@@ -22826,16 +22694,16 @@ function FilterButton({
   label,
   onClick
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: `filter-chip ${active ? "active" : ""}`, onClick, children: label });
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: `filter-chip ${active ? "active" : ""}`, onClick, children: label });
 }
 function ActivityWorkspace({
   model,
   selection,
   onSelect
 }) {
-  const [viewMode, setViewMode] = (0, import_react2.useState)("tree");
-  const [search, setSearch] = (0, import_react2.useState)("");
-  const [filters, setFilters] = (0, import_react2.useState)({
+  const [viewMode, setViewMode] = (0, import_react.useState)("tree");
+  const [search, setSearch] = (0, import_react.useState)("");
+  const [filters, setFilters] = (0, import_react.useState)({
     subagents: true,
     tools: true,
     messages: true,
@@ -22845,19 +22713,19 @@ function ActivityWorkspace({
     root: true
   });
   const query = search.trim().toLowerCase();
-  const visibleTree = (0, import_react2.useMemo)(
+  const visibleTree = (0, import_react.useMemo)(
     () => buildVisibleTree(model, model.rootNodeKey, filters, query),
     [filters, model, query]
   );
-  const toggleFilter = (0, import_react2.useCallback)((key) => {
+  const toggleFilter = (0, import_react.useCallback)((key) => {
     setFilters((current) => ({ ...current, [key]: !current[key] }));
   }, []);
-  const clearSearch = (0, import_react2.useCallback)(() => setSearch(""), []);
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "activity-toolbar", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "toolbar-row", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "segmented", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+  const clearSearch = (0, import_react.useCallback)(() => setSearch(""), []);
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "activity-toolbar", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "toolbar-row", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "segmented", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "button",
             {
               type: "button",
@@ -22866,7 +22734,7 @@ function ActivityWorkspace({
               children: "Activity tree"
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "button",
             {
               type: "button",
@@ -22876,8 +22744,8 @@ function ActivityWorkspace({
             }
           )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "search-wrap", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "search-wrap", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "input",
             {
               className: "search-input",
@@ -22887,47 +22755,35 @@ function ActivityWorkspace({
               placeholder: "Search subagents, tools, recent activity\u2026"
             }
           ),
-          search && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "clear-search", onClick: clearSearch, children: "Clear" })
+          search && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: "clear-search", onClick: clearSearch, children: "Clear" })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "toolbar-row toolbar-row-wrap", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "filter-group", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "filter-label", children: "Type" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.subagents, label: "Subagents", onClick: () => toggleFilter("subagents") }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.tools, label: "Tools", onClick: () => toggleFilter("tools") }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.messages, label: "Messages", onClick: () => toggleFilter("messages") })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "toolbar-row toolbar-row-wrap", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "filter-group", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-label", children: "Type" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.subagents, label: "Subagents", onClick: () => toggleFilter("subagents") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.tools, label: "Tools", onClick: () => toggleFilter("tools") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.messages, label: "Messages", onClick: () => toggleFilter("messages") })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "filter-group", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "filter-label", children: "Status" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.running, label: "Running", onClick: () => toggleFilter("running") }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.complete, label: "Complete", onClick: () => toggleFilter("complete") }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.failed, label: "Failed", onClick: () => toggleFilter("failed") }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.root, label: "Root / orphan", onClick: () => toggleFilter("root") })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "filter-group", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-label", children: "Status" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.running, label: "Running", onClick: () => toggleFilter("running") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.complete, label: "Complete", onClick: () => toggleFilter("complete") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.failed, label: "Failed", onClick: () => toggleFilter("failed") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.root, label: "Root / orphan", onClick: () => toggleFilter("root") })
         ] })
       ] })
     ] }),
-    viewMode === "tree" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        AgentHierarchyPanel,
-        {
-          model,
-          selection,
-          onSelect,
-          filters,
-          query
-        }
-      ),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        ExecutionTreeView,
-        {
-          model,
-          visibleTree,
-          query,
-          selection,
-          onSelect
-        }
-      )
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    viewMode === "tree" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      ExecutionTreeView,
+      {
+        model,
+        visibleTree,
+        query,
+        selection,
+        onSelect
+      }
+    ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       FlatTimelineView,
       {
         items: model.items,
@@ -22937,6 +22793,136 @@ function ActivityWorkspace({
         onSelect
       }
     )
+  ] });
+}
+
+// src/AgentHierarchy.tsx
+var import_react2 = __toESM(require_react(), 1);
+var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
+function HierarchyCard({
+  agentNode,
+  model,
+  selection,
+  onSelect,
+  defaultExpanded,
+  query
+}) {
+  const [manualExpanded, setManualExpanded] = (0, import_react2.useState)(null);
+  const { node, record, children, depth, recentPreview } = agentNode;
+  const isRoot = node.kind === "root";
+  const isSelected = selectionKey(selection) === `${node.kind}:${node.id}`;
+  const hasChildren = children.length > 0;
+  const expanded = query ? true : manualExpanded ?? defaultExpanded;
+  const displayName = isRoot ? "Main agent" : record?.agentDisplayName || record?.agentName || shortId(node.id);
+  const statusText = isRoot ? null : titleCase(normalizeStatus(node.status));
+  const icon = isRoot ? "\u{1F9ED}" : statusIcon(node.status);
+  const sClass = isRoot ? "" : statusClass(node.status);
+  const durationMs = isRoot ? void 0 : inferDurationMsForNode(model, node);
+  const eventCount = node.descendantCount;
+  const recentLine = recentPreview;
+  const handleClick = () => {
+    onSelect(selectionForNode(node));
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `hierarchy-card-wrap ${isRoot ? "hierarchy-root-wrap" : ""}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+      "button",
+      {
+        type: "button",
+        className: `hierarchy-card ${isRoot ? "hierarchy-root-card" : ""} ${isSelected ? "selected" : ""}`,
+        onClick: handleClick,
+        title: displayName,
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "hierarchy-card-top", children: [
+            hasChildren && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              "span",
+              {
+                className: "hierarchy-card-toggle",
+                onClick: (e) => {
+                  e.stopPropagation();
+                  setManualExpanded((v) => !(v ?? defaultExpanded));
+                },
+                role: "button",
+                tabIndex: -1,
+                children: expanded ? "\u25BE" : "\u25B8"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `hierarchy-card-icon ${sClass}`, children: icon }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hierarchy-card-name", children: displayName }),
+            statusText && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `hierarchy-card-status ${sClass}`, children: statusText }),
+            durationMs != null && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hierarchy-card-duration", children: fmtDuration(durationMs) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "hierarchy-card-bottom", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "hierarchy-card-counts", children: [
+              pluralize(eventCount, "descendant"),
+              !isRoot && record?.totalToolCalls != null && ` \xB7 ${record.totalToolCalls} tools`
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hierarchy-card-recent", children: recentLine })
+          ] })
+        ]
+      }
+    ),
+    isRoot && children.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hierarchy-empty", children: "No subagents spawned" }),
+    hasChildren && expanded && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hierarchy-children", children: children.map((child) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      HierarchyCard,
+      {
+        agentNode: child,
+        model,
+        selection,
+        onSelect,
+        defaultExpanded: child.depth < 2,
+        query
+      },
+      child.key
+    )) })
+  ] });
+}
+function AgentHierarchyPanel({
+  model,
+  selection,
+  onSelect,
+  filters,
+  query
+}) {
+  const hierarchy = (0, import_react2.useMemo)(
+    () => buildAgentHierarchy(model, filters, query),
+    [model, filters, query]
+  );
+  const hasSubagents = model.subagentMap.size > 0;
+  const [panelOpen, setPanelOpen] = (0, import_react2.useState)(null);
+  const isOpen = query ? true : panelOpen ?? hasSubagents;
+  if (!hierarchy) return null;
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `hierarchy-panel ${isOpen ? "hierarchy-panel-open" : "hierarchy-panel-closed"}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+      "button",
+      {
+        type: "button",
+        className: "hierarchy-header",
+        onClick: () => {
+          if (query) return;
+          setPanelOpen((v) => !(v ?? hasSubagents));
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hierarchy-header-toggle", children: isOpen ? "\u25BE" : "\u25B8" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hierarchy-header-title", children: "Agent Hierarchy" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "hierarchy-header-count", children: [
+            model.subagentMap.size,
+            " subagent",
+            model.subagentMap.size !== 1 ? "s" : ""
+          ] })
+        ]
+      }
+    ),
+    isOpen && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hierarchy-body", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      HierarchyCard,
+      {
+        agentNode: hierarchy,
+        model,
+        selection,
+        onSelect,
+        defaultExpanded: true,
+        query
+      }
+    ) })
   ] });
 }
 
@@ -23428,9 +23414,19 @@ function App() {
     ] }) }),
     !error && snapshot && hasData && model && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(OverviewCards, { stats: snapshot.stats, subagents: snapshot.subagents }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("section", { className: "hierarchy-section", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        AgentHierarchyPanel,
+        {
+          model,
+          selection,
+          onSelect: setSelection,
+          filters: { subagents: true, tools: true, messages: true, running: true, complete: true, failed: true, root: true },
+          query: ""
+        }
+      ) }),
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "panels", children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "panel-list", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "panel-header", children: "Background Tasks" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "panel-header", children: "Background Activity" }),
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ActivityWorkspace, { model, selection, onSelect: setSelection })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "panel-detail", children: [
