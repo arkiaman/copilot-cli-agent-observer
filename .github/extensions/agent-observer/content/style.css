@@ -847,6 +847,169 @@ main {
 .status-complete { color: #a6e3a1; }
 .status-failed { color: #f38ba8; }
 
+/* ── Agent Hierarchy Panel ──────────────────────────────────────────────── */
+.hierarchy-panel {
+  border-bottom: 1px solid #313244;
+  background: rgba(24, 24, 37, 0.52);
+}
+
+.hierarchy-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.45rem 0.75rem;
+  background: #181825;
+  border: none;
+  border-bottom: 1px solid #313244;
+  color: #cdd6f4;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.hierarchy-header:hover {
+  background: #1e1e2e;
+}
+
+.hierarchy-header-toggle {
+  font-size: 0.7rem;
+  color: #6c7086;
+  width: 1rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.hierarchy-header-title {
+  flex: 1;
+  color: #cba6f7;
+}
+
+.hierarchy-header-count {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: #6c7086;
+}
+
+.hierarchy-body {
+  padding: 0.5rem 0.6rem;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.hierarchy-card-wrap {
+  margin-bottom: 2px;
+}
+
+.hierarchy-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  background: #1e1e2e;
+  border: 1px solid #313244;
+  border-radius: 6px;
+  color: #cdd6f4;
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.hierarchy-card:hover {
+  border-color: #45475a;
+  background: #181825;
+}
+
+.hierarchy-card.selected {
+  border-color: #cba6f7;
+  background: rgba(203, 166, 247, 0.08);
+}
+
+.hierarchy-root-card {
+  border-left: 3px solid #cba6f7;
+}
+
+.hierarchy-card-top {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.hierarchy-card-toggle {
+  font-size: 0.65rem;
+  color: #6c7086;
+  width: 0.9rem;
+  text-align: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.hierarchy-card-toggle:hover {
+  color: #cdd6f4;
+}
+
+.hierarchy-card-icon {
+  flex-shrink: 0;
+}
+
+.hierarchy-card-name {
+  font-weight: 600;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hierarchy-card-status {
+  font-size: 0.68rem;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.hierarchy-card-duration {
+  font-size: 0.68rem;
+  color: #a6adc8;
+  flex-shrink: 0;
+}
+
+.hierarchy-card-bottom {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.68rem;
+  color: #6c7086;
+  overflow: hidden;
+}
+
+.hierarchy-card-counts {
+  flex-shrink: 0;
+}
+
+.hierarchy-card-recent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #a6adc8;
+}
+
+.hierarchy-children {
+  margin-left: 1rem;
+  padding-left: 0.5rem;
+  border-left: 1px solid #313244;
+  margin-top: 2px;
+}
+
+.hierarchy-empty {
+  padding: 0.35rem 0.6rem 0.25rem 1.6rem;
+  font-size: 0.7rem;
+  color: #6c7086;
+  font-style: italic;
+}
+
 /* ── Responsive tweaks ───────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
   .panels {

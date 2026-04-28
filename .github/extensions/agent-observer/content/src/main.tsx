@@ -1385,6 +1385,231 @@ function FilterButton({
     );
 }
 
+/* ── Agent Hierarchy Panel ──────────────────────────────────────────────── */
+
+interface HierarchyAgentNode {
+    key: string;
+    node: ExecutionNode;
+    record: SubagentRecord | null;
+    children: HierarchyAgentNode[];
+    depth: number;
+}
+
+function buildAgentHierarchy(
+    model: ActivityModel,
+    filters: FilterState,
+    query: string,
+): HierarchyAgentNode | null {
+    const rootNode = model.nodesByKey.get(model.rootNodeKey);
+    if (!rootNode) return null;
+
+    const lowerQuery = query.toLowerCase();
+
+    function matchesQuery(node: ExecutionNode, record: SubagentRecord | null): boolean {
+        if (!lowerQuery) return true;
+        const name = record?.agentDisplayName || record?.agentName || "";
+        return (
+            node.searchText.includes(lowerQuery) ||
+            name.toLowerCase().includes(lowerQuery)
+        );
+    }
+
+    function matchesStatusFilter(node: ExecutionNode): boolean {
+        if (node.kind === "root") return true;
+        return filters[normalizeStatus(node.status)];
+    }
+
+    function walkAgents(nodeKey: string, depth: number): HierarchyAgentNode | null {
+        const node = model.nodesByKey.get(nodeKey);
+        if (!node) return null;
+        if (node.kind !== "root" && node.kind !== "subagent") return null;
+
+        const record = node.kind === "subagent" ? (model.subagentMap.get(node.id) ?? null) : null;
+
+        // Recurse into all children looking for agent nodes
+        const agentChildren: HierarchyAgentNode[] = [];
+        for (const childKey of node.childKeys) {
+            const childNode = model.nodesByKey.get(childKey);
+            if (!childNode) continue;
+            if (childNode.kind === "subagent") {
+                const childResult = walkAgents(childKey, depth + 1);
+                if (childResult) agentChildren.push(childResult);
+            } else {
+                // Walk deeper — agents can be nested under non-agent nodes
+                for (const grandchildKey of childNode.childKeys) {
+                    const found = walkAgentsDeep(grandchildKey, depth + 1);
+                    agentChildren.push(...found);
+                }
+            }
+        }
+
+        const selfMatchesQuery = matchesQuery(node, record);
+        const selfMatchesStatus = matchesStatusFilter(node);
+
+        // For non-root: prune only if self fails filters AND no children survived
+        if (node.kind !== "root") {
+            if (!selfMatchesStatus && agentChildren.length === 0) return null;
+            if (lowerQuery && !selfMatchesQuery && agentChildren.length === 0) return null;
+        }
+
+        return { key: nodeKey, node, record, children: agentChildren, depth };
+    }
+
+    function walkAgentsDeep(nodeKey: string, depth: number): HierarchyAgentNode[] {
+        const node = model.nodesByKey.get(nodeKey);
+        if (!node) return [];
+        if (node.kind === "subagent") {
+            const result = walkAgents(nodeKey, depth);
+            return result ? [result] : [];
+        }
+        const found: HierarchyAgentNode[] = [];
+        for (const childKey of node.childKeys) {
+            found.push(...walkAgentsDeep(childKey, depth));
+        }
+        return found;
+    }
+
+    return walkAgents(model.rootNodeKey, 0);
+}
+
+function HierarchyCard({
+    agentNode,
+    model,
+    selection,
+    onSelect,
+    defaultExpanded,
+}: {
+    agentNode: HierarchyAgentNode;
+    model: ActivityModel;
+    selection: Selection;
+    onSelect: (selection: Selection) => void;
+    defaultExpanded: boolean;
+}) {
+    const [expanded, setExpanded] = useState(defaultExpanded);
+    const { node, record, children, depth } = agentNode;
+    const isRoot = node.kind === "root";
+    const isSelected = selectionKey(selection) === `${node.kind}:${node.id}`;
+    const hasChildren = children.length > 0;
+
+    const displayName = isRoot
+        ? "Root session"
+        : (record?.agentDisplayName || record?.agentName || shortId(node.id));
+    const statusText = isRoot ? "Active" : titleCase(normalizeStatus(node.status));
+    const icon = isRoot ? "🧭" : statusIcon(node.status);
+    const sClass = isRoot ? "" : statusClass(node.status);
+    const durationMs = isRoot ? undefined : inferDurationMsForNode(model, node);
+    const eventCount = node.descendantCount;
+    const recentLine = getRecentActivityPreview(model, node);
+
+    const handleClick = () => {
+        onSelect(selectionForNode(node));
+    };
+
+    return (
+        <div className={`hierarchy-card-wrap ${isRoot ? "hierarchy-root-wrap" : ""}`}>
+            <button
+                type="button"
+                className={`hierarchy-card ${isRoot ? "hierarchy-root-card" : ""} ${isSelected ? "selected" : ""}`}
+                onClick={handleClick}
+                title={displayName}
+            >
+                <div className="hierarchy-card-top">
+                    {hasChildren && (
+                        <span
+                            className="hierarchy-card-toggle"
+                            onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
+                            role="button"
+                            tabIndex={-1}
+                        >
+                            {expanded ? "▾" : "▸"}
+                        </span>
+                    )}
+                    <span className={`hierarchy-card-icon ${sClass}`}>{icon}</span>
+                    <span className="hierarchy-card-name">{displayName}</span>
+                    <span className={`hierarchy-card-status ${sClass}`}>{statusText}</span>
+                    {durationMs != null && <span className="hierarchy-card-duration">{fmtDuration(durationMs)}</span>}
+                </div>
+                <div className="hierarchy-card-bottom">
+                    <span className="hierarchy-card-counts">
+                        {pluralize(eventCount, "descendant")}
+                        {!isRoot && record?.totalToolCalls != null && ` · ${record.totalToolCalls} tools`}
+                    </span>
+                    <span className="hierarchy-card-recent">{recentLine}</span>
+                </div>
+            </button>
+
+            {isRoot && children.length === 0 && (
+                <div className="hierarchy-empty">No subagents spawned</div>
+            )}
+
+            {hasChildren && expanded && (
+                <div className="hierarchy-children">
+                    {children.map((child) => (
+                        <HierarchyCard
+                            key={child.key}
+                            agentNode={child}
+                            model={model}
+                            selection={selection}
+                            onSelect={onSelect}
+                            defaultExpanded={child.depth < 2}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function AgentHierarchyPanel({
+    model,
+    selection,
+    onSelect,
+    filters,
+    query,
+}: {
+    model: ActivityModel;
+    selection: Selection;
+    onSelect: (selection: Selection) => void;
+    filters: FilterState;
+    query: string;
+}) {
+    const hierarchy = useMemo(
+        () => buildAgentHierarchy(model, filters, query),
+        [model, filters, query],
+    );
+
+    const hasSubagents = model.subagentMap.size > 0;
+    const [panelOpen, setPanelOpen] = useState<boolean | null>(null);
+    const isOpen = panelOpen ?? hasSubagents;
+
+    if (!hierarchy) return null;
+
+    return (
+        <div className={`hierarchy-panel ${isOpen ? "hierarchy-panel-open" : "hierarchy-panel-closed"}`}>
+            <button
+                type="button"
+                className="hierarchy-header"
+                onClick={() => setPanelOpen((v) => !(v ?? hasSubagents))}
+            >
+                <span className="hierarchy-header-toggle">{isOpen ? "▾" : "▸"}</span>
+                <span className="hierarchy-header-title">Agent Hierarchy</span>
+                <span className="hierarchy-header-count">{model.subagentMap.size} agent{model.subagentMap.size !== 1 ? "s" : ""}</span>
+            </button>
+            {isOpen && (
+                <div className="hierarchy-body">
+                    <HierarchyCard
+                        agentNode={hierarchy}
+                        model={model}
+                        selection={selection}
+                        onSelect={onSelect}
+                        defaultExpanded={true}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
 function ActivityWorkspace({
     model,
     selection,
@@ -1470,6 +1695,14 @@ function ActivityWorkspace({
                     </div>
                 </div>
             </div>
+
+            <AgentHierarchyPanel
+                model={model}
+                selection={selection}
+                onSelect={onSelect}
+                filters={filters}
+                query={query}
+            />
 
             {viewMode === "tree" ? (
                 <ExecutionTreeView

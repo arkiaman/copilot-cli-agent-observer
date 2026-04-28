@@ -22720,6 +22720,180 @@ function FilterButton({
 }) {
   return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: `filter-chip ${active ? "active" : ""}`, onClick, children: label });
 }
+function buildAgentHierarchy(model, filters, query) {
+  const rootNode = model.nodesByKey.get(model.rootNodeKey);
+  if (!rootNode) return null;
+  const lowerQuery = query.toLowerCase();
+  function matchesQuery(node, record) {
+    if (!lowerQuery) return true;
+    const name = record?.agentDisplayName || record?.agentName || "";
+    return node.searchText.includes(lowerQuery) || name.toLowerCase().includes(lowerQuery);
+  }
+  function matchesStatusFilter(node) {
+    if (node.kind === "root") return true;
+    return filters[normalizeStatus(node.status)];
+  }
+  function walkAgents(nodeKey, depth) {
+    const node = model.nodesByKey.get(nodeKey);
+    if (!node) return null;
+    if (node.kind !== "root" && node.kind !== "subagent") return null;
+    const record = node.kind === "subagent" ? model.subagentMap.get(node.id) ?? null : null;
+    const agentChildren = [];
+    for (const childKey of node.childKeys) {
+      const childNode = model.nodesByKey.get(childKey);
+      if (!childNode) continue;
+      if (childNode.kind === "subagent") {
+        const childResult = walkAgents(childKey, depth + 1);
+        if (childResult) agentChildren.push(childResult);
+      } else {
+        for (const grandchildKey of childNode.childKeys) {
+          const found = walkAgentsDeep(grandchildKey, depth + 1);
+          agentChildren.push(...found);
+        }
+      }
+    }
+    const selfMatchesQuery = matchesQuery(node, record);
+    const selfMatchesStatus = matchesStatusFilter(node);
+    if (node.kind !== "root") {
+      if (!selfMatchesStatus && agentChildren.length === 0) return null;
+      if (lowerQuery && !selfMatchesQuery && agentChildren.length === 0) return null;
+    }
+    return { key: nodeKey, node, record, children: agentChildren, depth };
+  }
+  function walkAgentsDeep(nodeKey, depth) {
+    const node = model.nodesByKey.get(nodeKey);
+    if (!node) return [];
+    if (node.kind === "subagent") {
+      const result = walkAgents(nodeKey, depth);
+      return result ? [result] : [];
+    }
+    const found = [];
+    for (const childKey of node.childKeys) {
+      found.push(...walkAgentsDeep(childKey, depth));
+    }
+    return found;
+  }
+  return walkAgents(model.rootNodeKey, 0);
+}
+function HierarchyCard({
+  agentNode,
+  model,
+  selection,
+  onSelect,
+  defaultExpanded
+}) {
+  const [expanded, setExpanded] = (0, import_react.useState)(defaultExpanded);
+  const { node, record, children, depth } = agentNode;
+  const isRoot = node.kind === "root";
+  const isSelected = selectionKey(selection) === `${node.kind}:${node.id}`;
+  const hasChildren = children.length > 0;
+  const displayName = isRoot ? "Root session" : record?.agentDisplayName || record?.agentName || shortId(node.id);
+  const statusText = isRoot ? "Active" : titleCase(normalizeStatus(node.status));
+  const icon = isRoot ? "\u{1F9ED}" : statusIcon(node.status);
+  const sClass = isRoot ? "" : statusClass(node.status);
+  const durationMs = isRoot ? void 0 : inferDurationMsForNode(model, node);
+  const eventCount = node.descendantCount;
+  const recentLine = getRecentActivityPreview(model, node);
+  const handleClick = () => {
+    onSelect(selectionForNode(node));
+  };
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `hierarchy-card-wrap ${isRoot ? "hierarchy-root-wrap" : ""}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "button",
+      {
+        type: "button",
+        className: `hierarchy-card ${isRoot ? "hierarchy-root-card" : ""} ${isSelected ? "selected" : ""}`,
+        onClick: handleClick,
+        title: displayName,
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "hierarchy-card-top", children: [
+            hasChildren && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "span",
+              {
+                className: "hierarchy-card-toggle",
+                onClick: (e) => {
+                  e.stopPropagation();
+                  setExpanded((v) => !v);
+                },
+                role: "button",
+                tabIndex: -1,
+                children: expanded ? "\u25BE" : "\u25B8"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `hierarchy-card-icon ${sClass}`, children: icon }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-card-name", children: displayName }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `hierarchy-card-status ${sClass}`, children: statusText }),
+            durationMs != null && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-card-duration", children: fmtDuration(durationMs) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "hierarchy-card-bottom", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "hierarchy-card-counts", children: [
+              pluralize(eventCount, "descendant"),
+              !isRoot && record?.totalToolCalls != null && ` \xB7 ${record.totalToolCalls} tools`
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-card-recent", children: recentLine })
+          ] })
+        ]
+      }
+    ),
+    isRoot && children.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "hierarchy-empty", children: "No subagents spawned" }),
+    hasChildren && expanded && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "hierarchy-children", children: children.map((child) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      HierarchyCard,
+      {
+        agentNode: child,
+        model,
+        selection,
+        onSelect,
+        defaultExpanded: child.depth < 2
+      },
+      child.key
+    )) })
+  ] });
+}
+function AgentHierarchyPanel({
+  model,
+  selection,
+  onSelect,
+  filters,
+  query
+}) {
+  const hierarchy = (0, import_react.useMemo)(
+    () => buildAgentHierarchy(model, filters, query),
+    [model, filters, query]
+  );
+  const hasSubagents = model.subagentMap.size > 0;
+  const [panelOpen, setPanelOpen] = (0, import_react.useState)(null);
+  const isOpen = panelOpen ?? hasSubagents;
+  if (!hierarchy) return null;
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `hierarchy-panel ${isOpen ? "hierarchy-panel-open" : "hierarchy-panel-closed"}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "button",
+      {
+        type: "button",
+        className: "hierarchy-header",
+        onClick: () => setPanelOpen((v) => !(v ?? hasSubagents)),
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-header-toggle", children: isOpen ? "\u25BE" : "\u25B8" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-header-title", children: "Agent Hierarchy" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "hierarchy-header-count", children: [
+            model.subagentMap.size,
+            " agent",
+            model.subagentMap.size !== 1 ? "s" : ""
+          ] })
+        ]
+      }
+    ),
+    isOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "hierarchy-body", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      HierarchyCard,
+      {
+        agentNode: hierarchy,
+        model,
+        selection,
+        onSelect,
+        defaultExpanded: true
+      }
+    ) })
+  ] });
+}
 function ActivityWorkspace({
   model,
   selection,
@@ -22798,6 +22972,16 @@ function ActivityWorkspace({
         ] })
       ] })
     ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      AgentHierarchyPanel,
+      {
+        model,
+        selection,
+        onSelect,
+        filters,
+        query
+      }
+    ),
     viewMode === "tree" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       ExecutionTreeView,
       {
