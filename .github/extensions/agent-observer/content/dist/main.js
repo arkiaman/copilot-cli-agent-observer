@@ -24,6 +24,277 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// node_modules/scheduler/cjs/scheduler.development.js
+var require_scheduler_development = __commonJS({
+  "node_modules/scheduler/cjs/scheduler.development.js"(exports) {
+    "use strict";
+    (function() {
+      function performWorkUntilDeadline() {
+        needsPaint = false;
+        if (isMessageLoopRunning) {
+          var currentTime = exports.unstable_now();
+          startTime = currentTime;
+          var hasMoreWork = true;
+          try {
+            a: {
+              isHostCallbackScheduled = false;
+              isHostTimeoutScheduled && (isHostTimeoutScheduled = false, localClearTimeout(taskTimeoutID), taskTimeoutID = -1);
+              isPerformingWork = true;
+              var previousPriorityLevel = currentPriorityLevel;
+              try {
+                b: {
+                  advanceTimers(currentTime);
+                  for (currentTask = peek(taskQueue); null !== currentTask && !(currentTask.expirationTime > currentTime && shouldYieldToHost()); ) {
+                    var callback = currentTask.callback;
+                    if ("function" === typeof callback) {
+                      currentTask.callback = null;
+                      currentPriorityLevel = currentTask.priorityLevel;
+                      var continuationCallback = callback(
+                        currentTask.expirationTime <= currentTime
+                      );
+                      currentTime = exports.unstable_now();
+                      if ("function" === typeof continuationCallback) {
+                        currentTask.callback = continuationCallback;
+                        advanceTimers(currentTime);
+                        hasMoreWork = true;
+                        break b;
+                      }
+                      currentTask === peek(taskQueue) && pop(taskQueue);
+                      advanceTimers(currentTime);
+                    } else pop(taskQueue);
+                    currentTask = peek(taskQueue);
+                  }
+                  if (null !== currentTask) hasMoreWork = true;
+                  else {
+                    var firstTimer = peek(timerQueue);
+                    null !== firstTimer && requestHostTimeout(
+                      handleTimeout,
+                      firstTimer.startTime - currentTime
+                    );
+                    hasMoreWork = false;
+                  }
+                }
+                break a;
+              } finally {
+                currentTask = null, currentPriorityLevel = previousPriorityLevel, isPerformingWork = false;
+              }
+              hasMoreWork = void 0;
+            }
+          } finally {
+            hasMoreWork ? schedulePerformWorkUntilDeadline() : isMessageLoopRunning = false;
+          }
+        }
+      }
+      function push(heap, node) {
+        var index = heap.length;
+        heap.push(node);
+        a: for (; 0 < index; ) {
+          var parentIndex = index - 1 >>> 1, parent = heap[parentIndex];
+          if (0 < compare(parent, node))
+            heap[parentIndex] = node, heap[index] = parent, index = parentIndex;
+          else break a;
+        }
+      }
+      function peek(heap) {
+        return 0 === heap.length ? null : heap[0];
+      }
+      function pop(heap) {
+        if (0 === heap.length) return null;
+        var first = heap[0], last = heap.pop();
+        if (last !== first) {
+          heap[0] = last;
+          a: for (var index = 0, length = heap.length, halfLength = length >>> 1; index < halfLength; ) {
+            var leftIndex = 2 * (index + 1) - 1, left = heap[leftIndex], rightIndex = leftIndex + 1, right = heap[rightIndex];
+            if (0 > compare(left, last))
+              rightIndex < length && 0 > compare(right, left) ? (heap[index] = right, heap[rightIndex] = last, index = rightIndex) : (heap[index] = left, heap[leftIndex] = last, index = leftIndex);
+            else if (rightIndex < length && 0 > compare(right, last))
+              heap[index] = right, heap[rightIndex] = last, index = rightIndex;
+            else break a;
+          }
+        }
+        return first;
+      }
+      function compare(a, b) {
+        var diff = a.sortIndex - b.sortIndex;
+        return 0 !== diff ? diff : a.id - b.id;
+      }
+      function advanceTimers(currentTime) {
+        for (var timer = peek(timerQueue); null !== timer; ) {
+          if (null === timer.callback) pop(timerQueue);
+          else if (timer.startTime <= currentTime)
+            pop(timerQueue), timer.sortIndex = timer.expirationTime, push(taskQueue, timer);
+          else break;
+          timer = peek(timerQueue);
+        }
+      }
+      function handleTimeout(currentTime) {
+        isHostTimeoutScheduled = false;
+        advanceTimers(currentTime);
+        if (!isHostCallbackScheduled)
+          if (null !== peek(taskQueue))
+            isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline());
+          else {
+            var firstTimer = peek(timerQueue);
+            null !== firstTimer && requestHostTimeout(
+              handleTimeout,
+              firstTimer.startTime - currentTime
+            );
+          }
+      }
+      function shouldYieldToHost() {
+        return needsPaint ? true : exports.unstable_now() - startTime < frameInterval ? false : true;
+      }
+      function requestHostTimeout(callback, ms) {
+        taskTimeoutID = localSetTimeout(function() {
+          callback(exports.unstable_now());
+        }, ms);
+      }
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
+      exports.unstable_now = void 0;
+      if ("object" === typeof performance && "function" === typeof performance.now) {
+        var localPerformance = performance;
+        exports.unstable_now = function() {
+          return localPerformance.now();
+        };
+      } else {
+        var localDate = Date, initialTime = localDate.now();
+        exports.unstable_now = function() {
+          return localDate.now() - initialTime;
+        };
+      }
+      var taskQueue = [], timerQueue = [], taskIdCounter = 1, currentTask = null, currentPriorityLevel = 3, isPerformingWork = false, isHostCallbackScheduled = false, isHostTimeoutScheduled = false, needsPaint = false, localSetTimeout = "function" === typeof setTimeout ? setTimeout : null, localClearTimeout = "function" === typeof clearTimeout ? clearTimeout : null, localSetImmediate = "undefined" !== typeof setImmediate ? setImmediate : null, isMessageLoopRunning = false, taskTimeoutID = -1, frameInterval = 5, startTime = -1;
+      if ("function" === typeof localSetImmediate)
+        var schedulePerformWorkUntilDeadline = function() {
+          localSetImmediate(performWorkUntilDeadline);
+        };
+      else if ("undefined" !== typeof MessageChannel) {
+        var channel = new MessageChannel(), port = channel.port2;
+        channel.port1.onmessage = performWorkUntilDeadline;
+        schedulePerformWorkUntilDeadline = function() {
+          port.postMessage(null);
+        };
+      } else
+        schedulePerformWorkUntilDeadline = function() {
+          localSetTimeout(performWorkUntilDeadline, 0);
+        };
+      exports.unstable_IdlePriority = 5;
+      exports.unstable_ImmediatePriority = 1;
+      exports.unstable_LowPriority = 4;
+      exports.unstable_NormalPriority = 3;
+      exports.unstable_Profiling = null;
+      exports.unstable_UserBlockingPriority = 2;
+      exports.unstable_cancelCallback = function(task) {
+        task.callback = null;
+      };
+      exports.unstable_forceFrameRate = function(fps) {
+        0 > fps || 125 < fps ? console.error(
+          "forceFrameRate takes a positive int between 0 and 125, forcing frame rates higher than 125 fps is not supported"
+        ) : frameInterval = 0 < fps ? Math.floor(1e3 / fps) : 5;
+      };
+      exports.unstable_getCurrentPriorityLevel = function() {
+        return currentPriorityLevel;
+      };
+      exports.unstable_next = function(eventHandler) {
+        switch (currentPriorityLevel) {
+          case 1:
+          case 2:
+          case 3:
+            var priorityLevel = 3;
+            break;
+          default:
+            priorityLevel = currentPriorityLevel;
+        }
+        var previousPriorityLevel = currentPriorityLevel;
+        currentPriorityLevel = priorityLevel;
+        try {
+          return eventHandler();
+        } finally {
+          currentPriorityLevel = previousPriorityLevel;
+        }
+      };
+      exports.unstable_requestPaint = function() {
+        needsPaint = true;
+      };
+      exports.unstable_runWithPriority = function(priorityLevel, eventHandler) {
+        switch (priorityLevel) {
+          case 1:
+          case 2:
+          case 3:
+          case 4:
+          case 5:
+            break;
+          default:
+            priorityLevel = 3;
+        }
+        var previousPriorityLevel = currentPriorityLevel;
+        currentPriorityLevel = priorityLevel;
+        try {
+          return eventHandler();
+        } finally {
+          currentPriorityLevel = previousPriorityLevel;
+        }
+      };
+      exports.unstable_scheduleCallback = function(priorityLevel, callback, options) {
+        var currentTime = exports.unstable_now();
+        "object" === typeof options && null !== options ? (options = options.delay, options = "number" === typeof options && 0 < options ? currentTime + options : currentTime) : options = currentTime;
+        switch (priorityLevel) {
+          case 1:
+            var timeout = -1;
+            break;
+          case 2:
+            timeout = 250;
+            break;
+          case 5:
+            timeout = 1073741823;
+            break;
+          case 4:
+            timeout = 1e4;
+            break;
+          default:
+            timeout = 5e3;
+        }
+        timeout = options + timeout;
+        priorityLevel = {
+          id: taskIdCounter++,
+          callback,
+          priorityLevel,
+          startTime: options,
+          expirationTime: timeout,
+          sortIndex: -1
+        };
+        options > currentTime ? (priorityLevel.sortIndex = options, push(timerQueue, priorityLevel), null === peek(taskQueue) && priorityLevel === peek(timerQueue) && (isHostTimeoutScheduled ? (localClearTimeout(taskTimeoutID), taskTimeoutID = -1) : isHostTimeoutScheduled = true, requestHostTimeout(handleTimeout, options - currentTime))) : (priorityLevel.sortIndex = timeout, push(taskQueue, priorityLevel), isHostCallbackScheduled || isPerformingWork || (isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline())));
+        return priorityLevel;
+      };
+      exports.unstable_shouldYield = shouldYieldToHost;
+      exports.unstable_wrapCallback = function(callback) {
+        var parentPriorityLevel = currentPriorityLevel;
+        return function() {
+          var previousPriorityLevel = currentPriorityLevel;
+          currentPriorityLevel = parentPriorityLevel;
+          try {
+            return callback.apply(this, arguments);
+          } finally {
+            currentPriorityLevel = previousPriorityLevel;
+          }
+        };
+      };
+      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
+    })();
+  }
+});
+
+// node_modules/scheduler/index.js
+var require_scheduler = __commonJS({
+  "node_modules/scheduler/index.js"(exports, module) {
+    "use strict";
+    if (false) {
+      module.exports = null;
+    } else {
+      module.exports = require_scheduler_development();
+    }
+  }
+});
+
 // node_modules/react/cjs/react.development.js
 var require_react_development = __commonJS({
   "node_modules/react/cjs/react.development.js"(exports, module) {
@@ -1008,277 +1279,6 @@ var require_react = __commonJS({
   }
 });
 
-// node_modules/scheduler/cjs/scheduler.development.js
-var require_scheduler_development = __commonJS({
-  "node_modules/scheduler/cjs/scheduler.development.js"(exports) {
-    "use strict";
-    (function() {
-      function performWorkUntilDeadline() {
-        needsPaint = false;
-        if (isMessageLoopRunning) {
-          var currentTime = exports.unstable_now();
-          startTime = currentTime;
-          var hasMoreWork = true;
-          try {
-            a: {
-              isHostCallbackScheduled = false;
-              isHostTimeoutScheduled && (isHostTimeoutScheduled = false, localClearTimeout(taskTimeoutID), taskTimeoutID = -1);
-              isPerformingWork = true;
-              var previousPriorityLevel = currentPriorityLevel;
-              try {
-                b: {
-                  advanceTimers(currentTime);
-                  for (currentTask = peek(taskQueue); null !== currentTask && !(currentTask.expirationTime > currentTime && shouldYieldToHost()); ) {
-                    var callback = currentTask.callback;
-                    if ("function" === typeof callback) {
-                      currentTask.callback = null;
-                      currentPriorityLevel = currentTask.priorityLevel;
-                      var continuationCallback = callback(
-                        currentTask.expirationTime <= currentTime
-                      );
-                      currentTime = exports.unstable_now();
-                      if ("function" === typeof continuationCallback) {
-                        currentTask.callback = continuationCallback;
-                        advanceTimers(currentTime);
-                        hasMoreWork = true;
-                        break b;
-                      }
-                      currentTask === peek(taskQueue) && pop(taskQueue);
-                      advanceTimers(currentTime);
-                    } else pop(taskQueue);
-                    currentTask = peek(taskQueue);
-                  }
-                  if (null !== currentTask) hasMoreWork = true;
-                  else {
-                    var firstTimer = peek(timerQueue);
-                    null !== firstTimer && requestHostTimeout(
-                      handleTimeout,
-                      firstTimer.startTime - currentTime
-                    );
-                    hasMoreWork = false;
-                  }
-                }
-                break a;
-              } finally {
-                currentTask = null, currentPriorityLevel = previousPriorityLevel, isPerformingWork = false;
-              }
-              hasMoreWork = void 0;
-            }
-          } finally {
-            hasMoreWork ? schedulePerformWorkUntilDeadline() : isMessageLoopRunning = false;
-          }
-        }
-      }
-      function push(heap, node) {
-        var index = heap.length;
-        heap.push(node);
-        a: for (; 0 < index; ) {
-          var parentIndex = index - 1 >>> 1, parent = heap[parentIndex];
-          if (0 < compare(parent, node))
-            heap[parentIndex] = node, heap[index] = parent, index = parentIndex;
-          else break a;
-        }
-      }
-      function peek(heap) {
-        return 0 === heap.length ? null : heap[0];
-      }
-      function pop(heap) {
-        if (0 === heap.length) return null;
-        var first = heap[0], last = heap.pop();
-        if (last !== first) {
-          heap[0] = last;
-          a: for (var index = 0, length = heap.length, halfLength = length >>> 1; index < halfLength; ) {
-            var leftIndex = 2 * (index + 1) - 1, left = heap[leftIndex], rightIndex = leftIndex + 1, right = heap[rightIndex];
-            if (0 > compare(left, last))
-              rightIndex < length && 0 > compare(right, left) ? (heap[index] = right, heap[rightIndex] = last, index = rightIndex) : (heap[index] = left, heap[leftIndex] = last, index = leftIndex);
-            else if (rightIndex < length && 0 > compare(right, last))
-              heap[index] = right, heap[rightIndex] = last, index = rightIndex;
-            else break a;
-          }
-        }
-        return first;
-      }
-      function compare(a, b) {
-        var diff = a.sortIndex - b.sortIndex;
-        return 0 !== diff ? diff : a.id - b.id;
-      }
-      function advanceTimers(currentTime) {
-        for (var timer = peek(timerQueue); null !== timer; ) {
-          if (null === timer.callback) pop(timerQueue);
-          else if (timer.startTime <= currentTime)
-            pop(timerQueue), timer.sortIndex = timer.expirationTime, push(taskQueue, timer);
-          else break;
-          timer = peek(timerQueue);
-        }
-      }
-      function handleTimeout(currentTime) {
-        isHostTimeoutScheduled = false;
-        advanceTimers(currentTime);
-        if (!isHostCallbackScheduled)
-          if (null !== peek(taskQueue))
-            isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline());
-          else {
-            var firstTimer = peek(timerQueue);
-            null !== firstTimer && requestHostTimeout(
-              handleTimeout,
-              firstTimer.startTime - currentTime
-            );
-          }
-      }
-      function shouldYieldToHost() {
-        return needsPaint ? true : exports.unstable_now() - startTime < frameInterval ? false : true;
-      }
-      function requestHostTimeout(callback, ms) {
-        taskTimeoutID = localSetTimeout(function() {
-          callback(exports.unstable_now());
-        }, ms);
-      }
-      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      exports.unstable_now = void 0;
-      if ("object" === typeof performance && "function" === typeof performance.now) {
-        var localPerformance = performance;
-        exports.unstable_now = function() {
-          return localPerformance.now();
-        };
-      } else {
-        var localDate = Date, initialTime = localDate.now();
-        exports.unstable_now = function() {
-          return localDate.now() - initialTime;
-        };
-      }
-      var taskQueue = [], timerQueue = [], taskIdCounter = 1, currentTask = null, currentPriorityLevel = 3, isPerformingWork = false, isHostCallbackScheduled = false, isHostTimeoutScheduled = false, needsPaint = false, localSetTimeout = "function" === typeof setTimeout ? setTimeout : null, localClearTimeout = "function" === typeof clearTimeout ? clearTimeout : null, localSetImmediate = "undefined" !== typeof setImmediate ? setImmediate : null, isMessageLoopRunning = false, taskTimeoutID = -1, frameInterval = 5, startTime = -1;
-      if ("function" === typeof localSetImmediate)
-        var schedulePerformWorkUntilDeadline = function() {
-          localSetImmediate(performWorkUntilDeadline);
-        };
-      else if ("undefined" !== typeof MessageChannel) {
-        var channel = new MessageChannel(), port = channel.port2;
-        channel.port1.onmessage = performWorkUntilDeadline;
-        schedulePerformWorkUntilDeadline = function() {
-          port.postMessage(null);
-        };
-      } else
-        schedulePerformWorkUntilDeadline = function() {
-          localSetTimeout(performWorkUntilDeadline, 0);
-        };
-      exports.unstable_IdlePriority = 5;
-      exports.unstable_ImmediatePriority = 1;
-      exports.unstable_LowPriority = 4;
-      exports.unstable_NormalPriority = 3;
-      exports.unstable_Profiling = null;
-      exports.unstable_UserBlockingPriority = 2;
-      exports.unstable_cancelCallback = function(task) {
-        task.callback = null;
-      };
-      exports.unstable_forceFrameRate = function(fps) {
-        0 > fps || 125 < fps ? console.error(
-          "forceFrameRate takes a positive int between 0 and 125, forcing frame rates higher than 125 fps is not supported"
-        ) : frameInterval = 0 < fps ? Math.floor(1e3 / fps) : 5;
-      };
-      exports.unstable_getCurrentPriorityLevel = function() {
-        return currentPriorityLevel;
-      };
-      exports.unstable_next = function(eventHandler) {
-        switch (currentPriorityLevel) {
-          case 1:
-          case 2:
-          case 3:
-            var priorityLevel = 3;
-            break;
-          default:
-            priorityLevel = currentPriorityLevel;
-        }
-        var previousPriorityLevel = currentPriorityLevel;
-        currentPriorityLevel = priorityLevel;
-        try {
-          return eventHandler();
-        } finally {
-          currentPriorityLevel = previousPriorityLevel;
-        }
-      };
-      exports.unstable_requestPaint = function() {
-        needsPaint = true;
-      };
-      exports.unstable_runWithPriority = function(priorityLevel, eventHandler) {
-        switch (priorityLevel) {
-          case 1:
-          case 2:
-          case 3:
-          case 4:
-          case 5:
-            break;
-          default:
-            priorityLevel = 3;
-        }
-        var previousPriorityLevel = currentPriorityLevel;
-        currentPriorityLevel = priorityLevel;
-        try {
-          return eventHandler();
-        } finally {
-          currentPriorityLevel = previousPriorityLevel;
-        }
-      };
-      exports.unstable_scheduleCallback = function(priorityLevel, callback, options) {
-        var currentTime = exports.unstable_now();
-        "object" === typeof options && null !== options ? (options = options.delay, options = "number" === typeof options && 0 < options ? currentTime + options : currentTime) : options = currentTime;
-        switch (priorityLevel) {
-          case 1:
-            var timeout = -1;
-            break;
-          case 2:
-            timeout = 250;
-            break;
-          case 5:
-            timeout = 1073741823;
-            break;
-          case 4:
-            timeout = 1e4;
-            break;
-          default:
-            timeout = 5e3;
-        }
-        timeout = options + timeout;
-        priorityLevel = {
-          id: taskIdCounter++,
-          callback,
-          priorityLevel,
-          startTime: options,
-          expirationTime: timeout,
-          sortIndex: -1
-        };
-        options > currentTime ? (priorityLevel.sortIndex = options, push(timerQueue, priorityLevel), null === peek(taskQueue) && priorityLevel === peek(timerQueue) && (isHostTimeoutScheduled ? (localClearTimeout(taskTimeoutID), taskTimeoutID = -1) : isHostTimeoutScheduled = true, requestHostTimeout(handleTimeout, options - currentTime))) : (priorityLevel.sortIndex = timeout, push(taskQueue, priorityLevel), isHostCallbackScheduled || isPerformingWork || (isHostCallbackScheduled = true, isMessageLoopRunning || (isMessageLoopRunning = true, schedulePerformWorkUntilDeadline())));
-        return priorityLevel;
-      };
-      exports.unstable_shouldYield = shouldYieldToHost;
-      exports.unstable_wrapCallback = function(callback) {
-        var parentPriorityLevel = currentPriorityLevel;
-        return function() {
-          var previousPriorityLevel = currentPriorityLevel;
-          currentPriorityLevel = parentPriorityLevel;
-          try {
-            return callback.apply(this, arguments);
-          } finally {
-            currentPriorityLevel = previousPriorityLevel;
-          }
-        };
-      };
-      "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStop(Error());
-    })();
-  }
-});
-
-// node_modules/scheduler/index.js
-var require_scheduler = __commonJS({
-  "node_modules/scheduler/index.js"(exports, module) {
-    "use strict";
-    if (false) {
-      module.exports = null;
-    } else {
-      module.exports = require_scheduler_development();
-    }
-  }
-});
-
 // node_modules/react-dom/cjs/react-dom.development.js
 var require_react_dom_development = __commonJS({
   "node_modules/react-dom/cjs/react-dom.development.js"(exports) {
@@ -1328,7 +1328,7 @@ var require_react_dom_development = __commonJS({
         return dispatcher;
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var React2 = require_react(), Internals = {
+      var React5 = require_react(), Internals = {
         d: {
           f: noop,
           r: function() {
@@ -1346,7 +1346,7 @@ var require_react_dom_development = __commonJS({
         },
         p: 0,
         findDOMNode: null
-      }, REACT_PORTAL_TYPE = Symbol.for("react.portal"), ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      }, REACT_PORTAL_TYPE = Symbol.for("react.portal"), ReactSharedInternals = React5.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       "function" === typeof Map && null != Map.prototype && "function" === typeof Map.prototype.forEach && "function" === typeof Set && null != Set.prototype && "function" === typeof Set.prototype.clear && "function" === typeof Set.prototype.forEach || console.error(
         "React depends on Map and Set built-in types. Make sure that you load a polyfill in older browsers. https://reactjs.org/link/react-polyfills"
       );
@@ -2881,7 +2881,7 @@ var require_react_dom_client_development = __commonJS({
         "number" === type && getActiveElement(node.ownerDocument) === node || node.defaultValue === "" + value || (node.defaultValue = "" + value);
       }
       function validateOptionProps(element, props) {
-        null == props.value && ("object" === typeof props.children && null !== props.children ? React2.Children.forEach(props.children, function(child) {
+        null == props.value && ("object" === typeof props.children && null !== props.children ? React5.Children.forEach(props.children, function(child) {
           null == child || "string" === typeof child || "number" === typeof child || "bigint" === typeof child || didWarnInvalidChild || (didWarnInvalidChild = true, console.error(
             "Cannot infer the option value of complex children. Pass a `value` prop or use a plain string as children to <option>."
           ));
@@ -18513,14 +18513,14 @@ var require_react_dom_client_development = __commonJS({
         ));
       }
       "undefined" !== typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ && "function" === typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart && __REACT_DEVTOOLS_GLOBAL_HOOK__.registerInternalModuleStart(Error());
-      var Scheduler = require_scheduler(), React2 = require_react(), ReactDOM = require_react_dom(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = Symbol.for("react.element"), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy");
+      var Scheduler = require_scheduler(), React5 = require_react(), ReactDOM = require_react_dom(), assign = Object.assign, REACT_LEGACY_ELEMENT_TYPE = Symbol.for("react.element"), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy");
       Symbol.for("react.scope");
       var REACT_ACTIVITY_TYPE = Symbol.for("react.activity");
       Symbol.for("react.legacy_hidden");
       Symbol.for("react.tracing_marker");
       var REACT_MEMO_CACHE_SENTINEL = Symbol.for("react.memo_cache_sentinel");
       Symbol.for("react.view_transition");
-      var MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, NotPending = Object.freeze({
+      var MAYBE_ITERATOR_SYMBOL = Symbol.iterator, REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), isArrayImpl = Array.isArray, ReactSharedInternals = React5.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, NotPending = Object.freeze({
         pending: false,
         data: null,
         method: null,
@@ -21308,7 +21308,7 @@ var require_react_dom_client_development = __commonJS({
         }
       };
       (function() {
-        var isomorphicReactPackageVersion = React2.version;
+        var isomorphicReactPackageVersion = React5.version;
         if ("19.2.5" !== isomorphicReactPackageVersion)
           throw Error(
             'Incompatible React versions: The "react" and "react-dom" packages must have the exact same version. Instead got:\n  - react:      ' + (isomorphicReactPackageVersion + "\n  - react-dom:  19.2.5\nLearn more: https://react.dev/warnings/version-mismatch")
@@ -21662,18 +21662,18 @@ var require_react_jsx_runtime_development = __commonJS({
       function isValidElement(object) {
         return "object" === typeof object && null !== object && object.$$typeof === REACT_ELEMENT_TYPE;
       }
-      var React2 = require_react(), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
+      var React5 = require_react(), REACT_ELEMENT_TYPE = Symbol.for("react.transitional.element"), REACT_PORTAL_TYPE = Symbol.for("react.portal"), REACT_FRAGMENT_TYPE = Symbol.for("react.fragment"), REACT_STRICT_MODE_TYPE = Symbol.for("react.strict_mode"), REACT_PROFILER_TYPE = Symbol.for("react.profiler"), REACT_CONSUMER_TYPE = Symbol.for("react.consumer"), REACT_CONTEXT_TYPE = Symbol.for("react.context"), REACT_FORWARD_REF_TYPE = Symbol.for("react.forward_ref"), REACT_SUSPENSE_TYPE = Symbol.for("react.suspense"), REACT_SUSPENSE_LIST_TYPE = Symbol.for("react.suspense_list"), REACT_MEMO_TYPE = Symbol.for("react.memo"), REACT_LAZY_TYPE = Symbol.for("react.lazy"), REACT_ACTIVITY_TYPE = Symbol.for("react.activity"), REACT_CLIENT_REFERENCE = Symbol.for("react.client.reference"), ReactSharedInternals = React5.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE, hasOwnProperty = Object.prototype.hasOwnProperty, isArrayImpl = Array.isArray, createTask = console.createTask ? console.createTask : function() {
         return null;
       };
-      React2 = {
+      React5 = {
         react_stack_bottom_frame: function(callStackForError) {
           return callStackForError();
         }
       };
       var specialPropKeyWarningShown;
       var didWarnAboutElementRef = {};
-      var unknownOwnerDebugStack = React2.react_stack_bottom_frame.bind(
-        React2,
+      var unknownOwnerDebugStack = React5.react_stack_bottom_frame.bind(
+        React5,
         UnknownOwner
       )();
       var unknownOwnerDebugTask = createTask(getTaskName(UnknownOwner));
@@ -21718,14 +21718,12 @@ var require_jsx_runtime = __commonJS({
 });
 
 // src/main.tsx
-var import_react = __toESM(require_react(), 1);
 var import_client = __toESM(require_client(), 1);
-var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
-var SYNTHETIC_ROOT_ID = "__root__";
-var UNAVAILABLE_FROM_EVENT_STREAM = "Unavailable from event stream";
+
+// src/helpers.ts
 function shortId(id) {
   if (!id) return "\u2014";
-  if (id === SYNTHETIC_ROOT_ID) return "root";
+  if (id === "__root__") return "root";
   return id.length > 12 ? id.slice(0, 6) + "\u2026" + id.slice(-4) : id;
 }
 function fmtTime(iso) {
@@ -21837,20 +21835,6 @@ function resultSnippet(toolName, resultPreview) {
   }) ?? lines.find((l) => l.trim()) ?? text;
   return previewText(meaningful, 120);
 }
-function ExpandablePre({ text, limit = 500, className = "detail-pre" }) {
-  const [expanded, setExpanded] = (0, import_react.useState)(false);
-  const HARD_CEIL = 5e4;
-  const display = expanded ? text.slice(0, HARD_CEIL) : text.slice(0, limit);
-  const isTruncated = text.length > limit;
-  const isHardCeiled = expanded && text.length > HARD_CEIL;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "expandable-pre-wrap", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("pre", { className, children: [
-      display,
-      isHardCeiled ? "\n\u2026(too large to display fully)" : ""
-    ] }),
-    isTruncated && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { className: "expandable-pre-toggle", onClick: () => setExpanded((v) => !v), children: expanded ? "Show less" : `Show more (${text.length.toLocaleString()} chars total)` })
-  ] });
-}
 function compareIsoDesc(a, b) {
   const aTime = a ? Date.parse(a) : 0;
   const bTime = b ? Date.parse(b) : 0;
@@ -21898,10 +21882,53 @@ function stringifyForSearch(value) {
     return String(value);
   }
 }
-function nodeOriginTimestamp(kind, id, snapshot) {
-  if (kind === "root") {
-    return latestSnapshotTimestamp(snapshot);
+function pluralize(count, noun, plural = `${noun}s`) {
+  return `${count} ${count === 1 ? noun : plural}`;
+}
+function titleCase(value) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
+function extractNamedText(value, keys, depth = 0) {
+  if (depth > 4 || value == null) return null;
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text ? text : null;
   }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = extractNamedText(item, keys, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value === "object") {
+    const record = value;
+    for (const key of keys) {
+      if (key in record) {
+        const found = extractNamedText(record[key], keys, depth + 1);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
+}
+function toPromptBlock(value, maxLines = 10) {
+  const lines = value.split(/\r?\n/);
+  const shown = lines.slice(0, maxLines).join("\n");
+  return lines.length > maxLines ? `${shown}
+\u2026` : shown;
+}
+
+// src/App.tsx
+var import_react4 = __toESM(require_react(), 1);
+
+// src/types.ts
+var SYNTHETIC_ROOT_ID = "__root__";
+var UNAVAILABLE_FROM_EVENT_STREAM = "Unavailable from event stream";
+
+// src/model.ts
+function nodeOriginTimestamp(kind, id, snapshot) {
+  if (kind === "root") return latestSnapshotTimestamp(snapshot);
   if (kind === "subagent") {
     const record2 = snapshot.subagents.find((item) => item.id === id);
     return record2?.startedAt || record2?._lastEventTs || "";
@@ -21929,9 +21956,7 @@ function buildFallbackExecutionGraph(snapshot) {
   const toolCallIds = new Set(snapshot.toolCalls.map((record) => record.id));
   const orphanKeys = /* @__PURE__ */ new Set();
   function ensureBucket(key) {
-    if (!childNodeKeys[key]) {
-      childNodeKeys[key] = [];
-    }
+    if (!childNodeKeys[key]) childNodeKeys[key] = [];
     return childNodeKeys[key];
   }
   function structuralParentKey(parentToolCallId) {
@@ -22021,42 +22046,6 @@ function getNodeTitleByKey(nodesByKey, key) {
   if (!key) return "Root session";
   return nodesByKey.get(key)?.title || shortId(parseNodeKey(key).id);
 }
-function pluralize(count, noun, plural = `${noun}s`) {
-  return `${count} ${count === 1 ? noun : plural}`;
-}
-function titleCase(value) {
-  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
-}
-function extractNamedText(value, keys, depth = 0) {
-  if (depth > 4 || value == null) return null;
-  if (typeof value === "string") {
-    const text = value.trim();
-    return text ? text : null;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = extractNamedText(item, keys, depth + 1);
-      if (found) return found;
-    }
-    return null;
-  }
-  if (typeof value === "object") {
-    const record = value;
-    for (const key of keys) {
-      if (key in record) {
-        const found = extractNamedText(record[key], keys, depth + 1);
-        if (found) return found;
-      }
-    }
-  }
-  return null;
-}
-function toPromptBlock(value, maxLines = 10) {
-  const lines = value.split(/\r?\n/);
-  const shown = lines.slice(0, maxLines).join("\n");
-  return lines.length > maxLines ? `${shown}
-\u2026` : shown;
-}
 function inferDurationMsForNode(model, node) {
   if (node.kind === "subagent") {
     const record = model.subagentMap.get(node.id);
@@ -22065,9 +22054,7 @@ function inferDurationMsForNode(model, node) {
     const start = record.startedAt ? Date.parse(record.startedAt) : NaN;
     const endSource = record.completedAt || record.failedAt;
     const end = endSource ? Date.parse(endSource) : record.status === "started" ? Date.now() : NaN;
-    if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
-      return end - start;
-    }
+    if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) return end - start;
     return void 0;
   }
   if (node.kind === "toolcall") {
@@ -22076,9 +22063,7 @@ function inferDurationMsForNode(model, node) {
     const start = record.startedAt ? Date.parse(record.startedAt) : NaN;
     const endSource = record.completedAt;
     const end = endSource ? Date.parse(endSource) : record.status === "running" ? Date.now() : NaN;
-    if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
-      return end - start;
-    }
+    if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) return end - start;
   }
   return void 0;
 }
@@ -22100,9 +22085,7 @@ function formatToolRecordStatusSummary(record) {
 }
 function getNodeTypeLabel(model, node) {
   if (node.kind === "root") return "root";
-  if (node.kind === "subagent") {
-    return model.subagentMap.get(node.id)?.agentName || "subagent";
-  }
+  if (node.kind === "subagent") return model.subagentMap.get(node.id)?.agentName || "subagent";
   if (node.kind === "toolcall") return "tool";
   return "assistant.message";
 }
@@ -22396,9 +22379,7 @@ function buildVisibleTree(model, nodeKey, filters, query, hideRootContext = fals
   const node = model.nodesByKey.get(nodeKey);
   if (!node) return null;
   const blockedByRootContext = hideRootContext || !filters.root && node.kind !== "root" && (node.orphan || node.parentKey === model.rootNodeKey && node.kind !== "subagent");
-  if (blockedByRootContext) {
-    return null;
-  }
+  if (blockedByRootContext) return null;
   const children = node.childKeys.map((childKey) => buildVisibleTree(model, childKey, filters, query, blockedByRootContext)).filter((child) => child != null);
   const matched = node.kind === "root" ? true : matchesNodeFilters(node, filters, query);
   if (node.kind === "root" || matched || children.length > 0) {
@@ -22422,303 +22403,12 @@ function collectDescendantNodes(model, nodeKey) {
   return descendants;
 }
 function selectionForNode(node) {
-  if (node.kind === "root") {
-    return { kind: "root", id: SYNTHETIC_ROOT_ID };
-  }
+  if (node.kind === "root") return { kind: "root", id: SYNTHETIC_ROOT_ID };
   return { kind: node.kind, id: node.id };
 }
 function selectionExists(selection, model) {
   if (!selection || !model) return true;
   return selectionToStructuralNodeKey(selection, model) != null;
-}
-var FatalBoundary = class extends import_react.default.Component {
-  constructor(props) {
-    super(props);
-    this.state = { error: null };
-  }
-  static getDerivedStateFromError(error) {
-    return { error: error?.stack || error?.message || String(error) };
-  }
-  componentDidCatch(error) {
-    console.error("Agent Observer render failed", error);
-  }
-  render() {
-    if (this.state.error) {
-      return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fatal-screen", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "fatal-box", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fatal-title", children: "Agent Observer failed to render" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "fatal-text", children: "React hit a runtime error while rendering the UI." }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { className: "fatal-pre", children: this.state.error })
-      ] }) });
-    }
-    return this.props.children;
-  }
-};
-function OverviewCards({ stats, subagents }) {
-  const running = subagents.filter((subagent) => subagent.status === "started").length;
-  const completed = subagents.filter((subagent) => subagent.status === "completed").length;
-  const failed = subagents.filter((subagent) => subagent.status === "failed").length;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "overview", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "card", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-value", children: stats.subagentCount }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-label", children: "Background Subagents" }),
-      stats.subagentCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "card-detail", children: [
-        running > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "status-running", children: [
-          "\u23F3",
-          running
-        ] }),
-        completed > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "status-complete", children: [
-          "\u2705",
-          completed
-        ] }),
-        failed > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "status-failed", children: [
-          "\u274C",
-          failed
-        ] })
-      ] })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "card", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-value", children: stats.toolCallCount }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-label", children: "Tool Calls" }),
-      stats.orphanToolCallCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "card-detail", children: [
-        stats.orphanToolCallCount,
-        " orphan"
-      ] })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "card", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-value", children: stats.messageCount }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-label", children: "Messages" })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "card", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-value", children: stats.ingestedEventCount }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "card-label", children: "Events Ingested" })
-    ] })
-  ] });
-}
-function EventRow({
-  item,
-  selection,
-  onSelect,
-  showOwner
-}) {
-  const isSelected = selectionKey(selection) === itemSelectionKey(item);
-  const paddingLeft = 12 + item.depth * 18;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-    "button",
-    {
-      type: "button",
-      className: `event-row ${isSelected ? "selected" : ""} kind-${item.kind}`,
-      style: { paddingLeft: `${paddingLeft}px` },
-      onClick: () => onSelect({ kind: item.kind, id: item.id }),
-      title: item.title,
-      children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `activity-icon ${statusClass(item.status)}`, children: item.icon }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "event-main", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "event-title", children: item.title }),
-          item.subtitle && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "event-subtitle", children: item.subtitle }),
-          item.resultLine && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "event-result-line", children: item.resultLine })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `kind-pill kind-pill-${item.kind}`, children: item.kindLabel }),
-        item.orphan && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "owner-pill owner-pill-orphan", children: "orphan" }),
-        showOwner && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "owner-pill", children: item.ownerLabel }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "activity-ts", children: fmtTime(item.ts) })
-      ]
-    }
-  );
-}
-function TreeBranch({
-  branch,
-  model,
-  selectedNodeKey,
-  selectedPath,
-  collapsed,
-  onToggle,
-  onSelect,
-  query
-}) {
-  const node = model.nodesByKey.get(branch.key);
-  if (!node) return null;
-  const showSelf = node.kind === "root" || branch.matched;
-  const isSelected = selectedNodeKey === node.key;
-  const inSelectedPath = !isSelected && selectedPath.has(node.key);
-  const isTopLevelBranch = node.parentKey === model.rootNodeKey && node.kind !== "root";
-  const hasChildren = branch.children.length > 0;
-  const defaultCollapsed = node.kind === "root" ? false : true;
-  const explicitCollapsed = collapsed[node.key];
-  const isExpanded = query ? true : explicitCollapsed != null ? !explicitCollapsed : selectedPath.has(node.key) ? true : !defaultCollapsed;
-  const depthGuides = Math.max(0, node.pathKeys.length - 2);
-  const nodeDescription = getNodeDescription(model, node);
-  const disambiguator = isTopLevelBranch ? (() => {
-    const modelLabel = getNodeModelLabel(model, node);
-    return modelLabel !== UNAVAILABLE_FROM_EVENT_STREAM ? `Model: ${modelLabel}` : `ID: ${shortId(node.id)}`;
-  })() : null;
-  const recentPreview = isTopLevelBranch ? getRecentActivityPreview(model, node) : null;
-  const visibleChildren = node.kind === "root" && !query ? branch.children.filter((child) => {
-    const childNode = model.nodesByKey.get(child.key);
-    if (!childNode) return false;
-    return selectedPath.has(child.key) || childNode.kind === "subagent" || childNode.childKeys.length > 0 || childNode.orphan;
-  }) : branch.children;
-  if (!showSelf) {
-    if (visibleChildren.length === 0) return null;
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-children tree-children-promoted", children: visibleChildren.map((child) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      TreeBranch,
-      {
-        branch: child,
-        model,
-        selectedNodeKey,
-        selectedPath,
-        collapsed,
-        onToggle,
-        onSelect,
-        query
-      },
-      child.key
-    )) });
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `tree-branch ${node.kind === "root" ? "tree-branch-root" : ""}`, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `tree-row ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""} ${isTopLevelBranch ? "tree-row-top-level" : ""}`, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-row-main", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-guides", "aria-hidden": "true", children: Array.from({ length: depthGuides }).map((_, index) => {
-          const ancestorKey = node.pathKeys[index + 1];
-          return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "span",
-            {
-              className: `tree-guide ${selectedPath.has(ancestorKey) ? "active" : ""}`
-            },
-            `${node.key}-guide-${ancestorKey}-${index}`
-          );
-        }) }),
-        hasChildren ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "button",
-          {
-            type: "button",
-            className: "tree-toggle",
-            onClick: () => onToggle(node.key, isExpanded),
-            "aria-label": isExpanded ? "Collapse subtree" : "Expand subtree",
-            children: isExpanded ? "\u25BE" : "\u25B8"
-          }
-        ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-toggle-spacer" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "button",
-          {
-            type: "button",
-            className: "tree-select",
-            onClick: () => onSelect(selectionForNode(node)),
-            title: node.title,
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `activity-icon ${statusClass(node.status)}`, children: node.icon }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: `tree-title-wrap ${isTopLevelBranch ? "tree-title-wrap-top-level" : ""}`, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-title", children: node.title }),
-                (isTopLevelBranch ? nodeDescription : node.subtitle) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-subtitle", children: isTopLevelBranch ? nodeDescription : node.subtitle }),
-                isTopLevelBranch && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "tree-summary-line", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "tree-summary-primary", children: [
-                    "Recent: ",
-                    recentPreview
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-summary-divider", children: "\u2022" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-summary-secondary", children: disambiguator })
-                ] })
-              ] })
-            ]
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-row-meta", children: [
-        !isTopLevelBranch && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-meta-text tree-meta-kind", children: getNodeTypeLabel(model, node) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `tree-meta-text tree-meta-status ${statusClass(node.status)}`, children: formatNodeStatusSummary(model, node) }),
-        node.orphan && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "tree-meta-text tree-meta-warn", children: "orphan" })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-row-time", children: fmtTime(node.ts) })
-    ] }),
-    visibleChildren.length > 0 && isExpanded && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-children", children: visibleChildren.map((child) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      TreeBranch,
-      {
-        branch: child,
-        model,
-        selectedNodeKey,
-        selectedPath,
-        collapsed,
-        onToggle,
-        onSelect,
-        query
-      },
-      child.key
-    )) })
-  ] });
-}
-function ExecutionTreeView({
-  model,
-  visibleTree,
-  query,
-  selection,
-  onSelect
-}) {
-  const [collapsed, setCollapsed] = (0, import_react.useState)({});
-  const selectedNodeKey = (0, import_react.useMemo)(
-    () => selectionToStructuralNodeKey(selection, model),
-    [selection, model]
-  );
-  const selectedPath = (0, import_react.useMemo)(
-    () => new Set(selectedNodeKey ? model.nodesByKey.get(selectedNodeKey)?.pathKeys ?? [] : []),
-    [selectedNodeKey, model]
-  );
-  const toggleNode = (0, import_react.useCallback)((key, nextCollapsed) => {
-    setCollapsed((current) => ({ ...current, [key]: nextCollapsed }));
-  }, []);
-  if (!visibleTree) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-empty", children: "No tree nodes match the current filters." });
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-list", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-head", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-head-cell", children: "Background activity" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-head-cell tree-head-meta", children: "Status" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-head-cell tree-head-time", children: "Updated" })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      TreeBranch,
-      {
-        branch: visibleTree,
-        model,
-        selectedNodeKey,
-        selectedPath,
-        collapsed,
-        onToggle: toggleNode,
-        onSelect,
-        query
-      }
-    )
-  ] });
-}
-function FlatTimelineView({
-  items,
-  filters,
-  query,
-  selection,
-  onSelect
-}) {
-  const visible = (0, import_react.useMemo)(
-    () => items.filter((item) => matchesItemFilters(item, filters, query)),
-    [filters, items, query]
-  );
-  if (visible.length === 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "activity-empty", children: "No chronological matches for current filters." });
-  }
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flat-list", children: visible.map((item) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-    EventRow,
-    {
-      item,
-      selection,
-      onSelect,
-      showOwner: true
-    },
-    item.key
-  )) });
-}
-function FilterButton({
-  active,
-  label,
-  onClick
-}) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: `filter-chip ${active ? "active" : ""}`, onClick, children: label });
 }
 function buildAgentHierarchy(model, filters, query) {
   const rootNode = model.nodesByKey.get(model.rootNodeKey);
@@ -22776,6 +22466,13 @@ function buildAgentHierarchy(model, filters, query) {
   }
   return walkAgents(model.rootNodeKey, 0);
 }
+
+// src/ActivityWorkspace.tsx
+var import_react2 = __toESM(require_react(), 1);
+
+// src/AgentHierarchy.tsx
+var import_react = __toESM(require_react(), 1);
+var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
 function HierarchyCard({
   agentNode,
   model,
@@ -22902,14 +22599,243 @@ function AgentHierarchyPanel({
     ) })
   ] });
 }
+
+// src/ActivityWorkspace.tsx
+var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
+function EventRow({
+  item,
+  selection,
+  onSelect,
+  showOwner
+}) {
+  const isSelected = selectionKey(selection) === itemSelectionKey(item);
+  const paddingLeft = 12 + item.depth * 18;
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+    "button",
+    {
+      type: "button",
+      className: `event-row ${isSelected ? "selected" : ""} kind-${item.kind}`,
+      style: { paddingLeft: `${paddingLeft}px` },
+      onClick: () => onSelect({ kind: item.kind, id: item.id }),
+      title: item.title,
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `activity-icon ${statusClass(item.status)}`, children: item.icon }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "event-main", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "event-title", children: item.title }),
+          item.subtitle && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "event-subtitle", children: item.subtitle }),
+          item.resultLine && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "event-result-line", children: item.resultLine })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `kind-pill kind-pill-${item.kind}`, children: item.kindLabel }),
+        item.orphan && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "owner-pill owner-pill-orphan", children: "orphan" }),
+        showOwner && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "owner-pill", children: item.ownerLabel }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "activity-ts", children: fmtTime(item.ts) })
+      ]
+    }
+  );
+}
+function TreeBranch({
+  branch,
+  model,
+  selectedNodeKey,
+  selectedPath,
+  collapsed,
+  onToggle,
+  onSelect,
+  query
+}) {
+  const node = model.nodesByKey.get(branch.key);
+  if (!node) return null;
+  const showSelf = node.kind === "root" || branch.matched;
+  const isSelected = selectedNodeKey === node.key;
+  const inSelectedPath = !isSelected && selectedPath.has(node.key);
+  const isTopLevelBranch = node.parentKey === model.rootNodeKey && node.kind !== "root";
+  const hasChildren = branch.children.length > 0;
+  const defaultCollapsed = node.kind === "root" ? false : true;
+  const explicitCollapsed = collapsed[node.key];
+  const isExpanded = query ? true : explicitCollapsed != null ? !explicitCollapsed : selectedPath.has(node.key) ? true : !defaultCollapsed;
+  const depthGuides = Math.max(0, node.pathKeys.length - 2);
+  const nodeDescription = getNodeDescription(model, node);
+  const disambiguator = isTopLevelBranch ? (() => {
+    const modelLabel = getNodeModelLabel(model, node);
+    return modelLabel !== UNAVAILABLE_FROM_EVENT_STREAM ? `Model: ${modelLabel}` : `ID: ${shortId(node.id)}`;
+  })() : null;
+  const recentPreview = isTopLevelBranch ? getRecentActivityPreview(model, node) : null;
+  const visibleChildren = node.kind === "root" && !query ? branch.children.filter((child) => {
+    const childNode = model.nodesByKey.get(child.key);
+    if (!childNode) return false;
+    return selectedPath.has(child.key) || childNode.kind === "subagent" || childNode.childKeys.length > 0 || childNode.orphan;
+  }) : branch.children;
+  if (!showSelf) {
+    if (visibleChildren.length === 0) return null;
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-children tree-children-promoted", children: visibleChildren.map((child) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      TreeBranch,
+      {
+        branch: child,
+        model,
+        selectedNodeKey,
+        selectedPath,
+        collapsed,
+        onToggle,
+        onSelect,
+        query
+      },
+      child.key
+    )) });
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `tree-branch ${node.kind === "root" ? "tree-branch-root" : ""}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `tree-row ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""} ${isTopLevelBranch ? "tree-row-top-level" : ""}`, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "tree-row-main", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-guides", "aria-hidden": "true", children: Array.from({ length: depthGuides }).map((_, index) => {
+          const ancestorKey = node.pathKeys[index + 1];
+          return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "span",
+            {
+              className: `tree-guide ${selectedPath.has(ancestorKey) ? "active" : ""}`
+            },
+            `${node.key}-guide-${ancestorKey}-${index}`
+          );
+        }) }),
+        hasChildren ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "button",
+          {
+            type: "button",
+            className: "tree-toggle",
+            onClick: () => onToggle(node.key, isExpanded),
+            "aria-label": isExpanded ? "Collapse subtree" : "Expand subtree",
+            children: isExpanded ? "\u25BE" : "\u25B8"
+          }
+        ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-toggle-spacer" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+          "button",
+          {
+            type: "button",
+            className: "tree-select",
+            onClick: () => onSelect(selectionForNode(node)),
+            title: node.title,
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `activity-icon ${statusClass(node.status)}`, children: node.icon }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: `tree-title-wrap ${isTopLevelBranch ? "tree-title-wrap-top-level" : ""}`, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-title", children: node.title }),
+                (isTopLevelBranch ? nodeDescription : node.subtitle) && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-subtitle", children: isTopLevelBranch ? nodeDescription : node.subtitle }),
+                isTopLevelBranch && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "tree-summary-line", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "tree-summary-primary", children: [
+                    "Recent: ",
+                    recentPreview
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-summary-divider", children: "\u2022" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-summary-secondary", children: disambiguator })
+                ] })
+              ] })
+            ]
+          }
+        )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "tree-row-meta", children: [
+        !isTopLevelBranch && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-meta-text tree-meta-kind", children: getNodeTypeLabel(model, node) }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `tree-meta-text tree-meta-status ${statusClass(node.status)}`, children: formatNodeStatusSummary(model, node) }),
+        node.orphan && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "tree-meta-text tree-meta-warn", children: "orphan" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-row-time", children: fmtTime(node.ts) })
+    ] }),
+    visibleChildren.length > 0 && isExpanded && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-children", children: visibleChildren.map((child) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      TreeBranch,
+      {
+        branch: child,
+        model,
+        selectedNodeKey,
+        selectedPath,
+        collapsed,
+        onToggle,
+        onSelect,
+        query
+      },
+      child.key
+    )) })
+  ] });
+}
+function ExecutionTreeView({
+  model,
+  visibleTree,
+  query,
+  selection,
+  onSelect
+}) {
+  const [collapsed, setCollapsed] = (0, import_react2.useState)({});
+  const selectedNodeKey = (0, import_react2.useMemo)(
+    () => selectionToStructuralNodeKey(selection, model),
+    [selection, model]
+  );
+  const selectedPath = (0, import_react2.useMemo)(
+    () => new Set(selectedNodeKey ? model.nodesByKey.get(selectedNodeKey)?.pathKeys ?? [] : []),
+    [selectedNodeKey, model]
+  );
+  const toggleNode = (0, import_react2.useCallback)((key, nextCollapsed) => {
+    setCollapsed((current) => ({ ...current, [key]: nextCollapsed }));
+  }, []);
+  if (!visibleTree) {
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "activity-empty", children: "No tree nodes match the current filters." });
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "tree-list", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "tree-head", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-head-cell", children: "Background activity" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-head-cell tree-head-meta", children: "Status" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "tree-head-cell tree-head-time", children: "Updated" })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      TreeBranch,
+      {
+        branch: visibleTree,
+        model,
+        selectedNodeKey,
+        selectedPath,
+        collapsed,
+        onToggle: toggleNode,
+        onSelect,
+        query
+      }
+    )
+  ] });
+}
+function FlatTimelineView({
+  items,
+  filters,
+  query,
+  selection,
+  onSelect
+}) {
+  const visible = (0, import_react2.useMemo)(
+    () => items.filter((item) => matchesItemFilters(item, filters, query)),
+    [filters, items, query]
+  );
+  if (visible.length === 0) {
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "activity-empty", children: "No chronological matches for current filters." });
+  }
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "flat-list", children: visible.map((item) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    EventRow,
+    {
+      item,
+      selection,
+      onSelect,
+      showOwner: true
+    },
+    item.key
+  )) });
+}
+function FilterButton({
+  active,
+  label,
+  onClick
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: `filter-chip ${active ? "active" : ""}`, onClick, children: label });
+}
 function ActivityWorkspace({
   model,
   selection,
   onSelect
 }) {
-  const [viewMode, setViewMode] = (0, import_react.useState)("tree");
-  const [search, setSearch] = (0, import_react.useState)("");
-  const [filters, setFilters] = (0, import_react.useState)({
+  const [viewMode, setViewMode] = (0, import_react2.useState)("tree");
+  const [search, setSearch] = (0, import_react2.useState)("");
+  const [filters, setFilters] = (0, import_react2.useState)({
     subagents: true,
     tools: true,
     messages: true,
@@ -22919,19 +22845,19 @@ function ActivityWorkspace({
     root: true
   });
   const query = search.trim().toLowerCase();
-  const visibleTree = (0, import_react.useMemo)(
+  const visibleTree = (0, import_react2.useMemo)(
     () => buildVisibleTree(model, model.rootNodeKey, filters, query),
     [filters, model, query]
   );
-  const toggleFilter = (0, import_react.useCallback)((key) => {
+  const toggleFilter = (0, import_react2.useCallback)((key) => {
     setFilters((current) => ({ ...current, [key]: !current[key] }));
   }, []);
-  const clearSearch = (0, import_react.useCallback)(() => setSearch(""), []);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "activity-toolbar", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "toolbar-row", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "segmented", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+  const clearSearch = (0, import_react2.useCallback)(() => setSearch(""), []);
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "activity-toolbar", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "toolbar-row", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "segmented", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "button",
             {
               type: "button",
@@ -22940,7 +22866,7 @@ function ActivityWorkspace({
               children: "Activity tree"
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "button",
             {
               type: "button",
@@ -22950,8 +22876,8 @@ function ActivityWorkspace({
             }
           )
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "search-wrap", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "search-wrap", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "input",
             {
               className: "search-input",
@@ -22961,27 +22887,27 @@ function ActivityWorkspace({
               placeholder: "Search subagents, tools, recent activity\u2026"
             }
           ),
-          search && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: "clear-search", onClick: clearSearch, children: "Clear" })
+          search && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: "clear-search", onClick: clearSearch, children: "Clear" })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "toolbar-row toolbar-row-wrap", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "filter-group", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-label", children: "Type" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.subagents, label: "Subagents", onClick: () => toggleFilter("subagents") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.tools, label: "Tools", onClick: () => toggleFilter("tools") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.messages, label: "Messages", onClick: () => toggleFilter("messages") })
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "toolbar-row toolbar-row-wrap", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "filter-group", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "filter-label", children: "Type" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.subagents, label: "Subagents", onClick: () => toggleFilter("subagents") }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.tools, label: "Tools", onClick: () => toggleFilter("tools") }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.messages, label: "Messages", onClick: () => toggleFilter("messages") })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "filter-group", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-label", children: "Status" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.running, label: "Running", onClick: () => toggleFilter("running") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.complete, label: "Complete", onClick: () => toggleFilter("complete") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.failed, label: "Failed", onClick: () => toggleFilter("failed") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.root, label: "Root / orphan", onClick: () => toggleFilter("root") })
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "filter-group", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "filter-label", children: "Status" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.running, label: "Running", onClick: () => toggleFilter("running") }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.complete, label: "Complete", onClick: () => toggleFilter("complete") }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.failed, label: "Failed", onClick: () => toggleFilter("failed") }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(FilterButton, { active: filters.root, label: "Root / orphan", onClick: () => toggleFilter("root") })
         ] })
       ] })
     ] }),
-    viewMode === "tree" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    viewMode === "tree" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         AgentHierarchyPanel,
         {
           model,
@@ -22991,7 +22917,7 @@ function ActivityWorkspace({
           query
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         ExecutionTreeView,
         {
           model,
@@ -23001,7 +22927,7 @@ function ActivityWorkspace({
           onSelect
         }
       )
-    ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       FlatTimelineView,
       {
         items: model.items,
@@ -23013,17 +22939,35 @@ function ActivityWorkspace({
     )
   ] });
 }
+
+// src/DetailPane.tsx
+var import_react3 = __toESM(require_react(), 1);
+var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
+function ExpandablePre({ text, limit = 500, className = "detail-pre" }) {
+  const [expanded, setExpanded] = (0, import_react3.useState)(false);
+  const HARD_CEIL = 5e4;
+  const display = expanded ? text.slice(0, HARD_CEIL) : text.slice(0, limit);
+  const isTruncated = text.length > limit;
+  const isHardCeiled = expanded && text.length > HARD_CEIL;
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "expandable-pre-wrap", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("pre", { className, children: [
+      display,
+      isHardCeiled ? "\n\u2026(too large to display fully)" : ""
+    ] }),
+    isTruncated && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { className: "expandable-pre-toggle", onClick: () => setExpanded((v) => !v), children: expanded ? "Show less" : `Show more (${text.length.toLocaleString()} chars total)` })
+  ] });
+}
 function DetailHero({
   kicker,
   title,
   subtitle,
   pills
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-hero", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "detail-hero-kicker", children: kicker }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h3", { children: title }),
-    subtitle && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "detail-hero-subtitle", children: subtitle }),
-    pills.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "detail-hero-pills", children: pills.map((pill) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: pill.className ?? "summary-chip", children: pill.label }, `${pill.label}-${pill.className ?? ""}`)) })
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-hero", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-hero-kicker", children: kicker }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h3", { children: title }),
+    subtitle && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-hero-subtitle", children: subtitle }),
+    pills.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-hero-pills", children: pills.map((pill) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: pill.className ?? "summary-chip", children: pill.label }, `${pill.label}-${pill.className ?? ""}`)) })
   ] });
 }
 function DetailDisclosure({
@@ -23031,38 +22975,62 @@ function DetailDisclosure({
   children,
   defaultOpen = false
 }) {
-  const [isOpen, setIsOpen] = (0, import_react.useState)(defaultOpen);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+  const [isOpen, setIsOpen] = (0, import_react3.useState)(defaultOpen);
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
     "details",
     {
       className: "detail-disclosure",
       open: isOpen,
       onToggle: (e) => setIsOpen(e.target.open),
       children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("summary", { className: "detail-disclosure-summary", children: title }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "detail-disclosure-body", children })
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("summary", { className: "detail-disclosure-summary", children: title }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-disclosure-body", children })
       ]
     }
   );
 }
 function Breadcrumbs({ pathKeys, model }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "breadcrumb-trail", children: pathKeys.map((pathKey, index) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_react.default.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `breadcrumb breadcrumb-${parseNodeKey(pathKey).kind}`, children: getNodeTitleByKey(model.nodesByKey, pathKey) }),
-    index < pathKeys.length - 1 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "breadcrumb-sep", children: "\u203A" })
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "breadcrumb-trail", children: pathKeys.map((pathKey, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_react3.default.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: `breadcrumb breadcrumb-${parseNodeKey(pathKey).kind}`, children: getNodeTitleByKey(model.nodesByKey, pathKey) }),
+    index < pathKeys.length - 1 && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "breadcrumb-sep", children: "\u203A" })
   ] }, pathKey)) });
 }
 function ChildNodeList({ nodes, emptyText = "No recent activity yet." }) {
   if (nodes.length === 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "detail-text detail-fallback", children: emptyText });
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-text detail-fallback", children: emptyText });
   }
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "child-list", children: nodes.slice(0, 20).map((node) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "child-row", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `child-row-icon ${statusClass(node.status)}`, children: node.icon }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "child-row-main", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "child-row-title", children: node.title }),
-      node.subtitle && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "child-row-subtitle", children: node.subtitle })
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "child-list", children: nodes.slice(0, 20).map((node) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "child-row", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: `child-row-icon ${statusClass(node.status)}`, children: node.icon }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: "child-row-main", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "child-row-title", children: node.title }),
+      node.subtitle && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "child-row-subtitle", children: node.subtitle })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "child-row-time", children: fmtTime(node.ts) })
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "child-row-time", children: fmtTime(node.ts) })
   ] }, node.key)) });
+}
+function ReasoningSection({ availability, text }) {
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section detail-section-inline", children: [
+    availability === "available" && (text ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("pre", { className: "detail-pre reasoning-text", children: text }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "reasoning-empty", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "reasoning-empty-icon", children: "\u{1F4AD}" }),
+      "Reasoning was marked available but contained no text."
+    ] })),
+    availability === "empty" && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "reasoning-empty", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "reasoning-empty-icon", children: "\u{1F4AD}" }),
+      "Reasoning field was present but empty for this message."
+    ] }),
+    availability === "unsupported" && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "reasoning-empty", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: "reasoning-empty-icon", children: "\u{1F6AB}" }),
+      "Reasoning is not available \u2014 the model or event type does not expose thinking text."
+    ] })
+  ] });
+}
+function FieldTable({ fields }) {
+  const visible = fields.filter(([, value]) => value != null && value !== "\u2014" && value !== "");
+  if (visible.length === 0) return null;
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("table", { className: "field-table", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("tbody", { children: visible.map(([label, value]) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("tr", { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { className: "field-label", children: label }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("td", { className: "field-value", children: value })
+  ] }, label)) }) });
 }
 function DetailPane({
   snapshot,
@@ -23070,7 +23038,7 @@ function DetailPane({
   selection
 }) {
   if (!selection) {
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "detail-empty", children: "Select root, branch, tool, or message to inspect details." });
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-empty", children: "Select root, branch, tool, or message to inspect details." });
   }
   const structuralNodeKey = selectionToStructuralNodeKey(selection, model);
   const structuralNode = structuralNodeKey ? model.nodesByKey.get(structuralNodeKey) : null;
@@ -23081,8 +23049,8 @@ function DetailPane({
     const rootNode = model.nodesByKey.get(model.rootNodeKey);
     const rootOwnedChildren = directChildren.filter((node) => node.kind !== "subagent");
     const recentActivity = rootNode ? getRecentActivityNodes(model, rootNode, 8) : [];
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-content", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-content", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
         DetailHero,
         {
           kicker: "Background Tasks",
@@ -23096,7 +23064,7 @@ function DetailPane({
           ]
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FieldTable, { fields: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FieldTable, { fields: [
         ["Status", "Active"],
         ["ID", "root"],
         ["Type", "root"],
@@ -23104,34 +23072,34 @@ function DetailPane({
         ["Model", UNAVAILABLE_FROM_EVENT_STREAM],
         ["Prompt", UNAVAILABLE_FROM_EVENT_STREAM]
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Recent Activity" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChildNodeList, { nodes: recentActivity })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Recent Activity" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ChildNodeList, { nodes: recentActivity })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(DetailDisclosure, { title: "Observer Context", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FieldTable, { fields: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(DetailDisclosure, { title: "Observer Context", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FieldTable, { fields: [
           ["Top-level branches", String(rootNode?.childKeys.length ?? 0)],
           ["Descendants", String(rootNode?.descendantCount ?? 0)],
           ["Root-owned nodes", String(rootOwnedChildren.length)],
           ["Orphan nodes", String(model.graph.orphanNodeKeys.length)],
           ["Last activity", fmtTime(rootNode?.ts)]
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Lineage" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Breadcrumbs, { pathKeys: rootNode?.pathKeys ?? [model.rootNodeKey], model })
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Lineage" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Breadcrumbs, { pathKeys: rootNode?.pathKeys ?? [model.rootNodeKey], model })
         ] })
       ] })
     ] });
   }
   if (selection.kind === "subagent") {
     const record2 = snapshot.subagents.find((subagent) => subagent.id === selection.id);
-    if (!record2 || !structuralNode) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "detail-empty", children: "Subagent not found." });
+    if (!record2 || !structuralNode) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-empty", children: "Subagent not found." });
     const subtreeTools = descendants.filter((node) => node.kind === "toolcall");
     const subtreeMessages = descendants.filter((node) => node.kind === "message");
     const promptText = getNodePromptText(model, structuralNode);
     const recentActivity = getRecentActivityNodes(model, structuralNode, 8);
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-content", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-content", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
         DetailHero,
         {
           kicker: "Background Subagent",
@@ -23144,7 +23112,7 @@ function DetailPane({
           ]
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FieldTable, { fields: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FieldTable, { fields: [
         ["Status", formatNodeStatusSummary(model, structuralNode)],
         ["ID", shortId(record2.id)],
         ["Type", getNodeTypeLabel(model, structuralNode)],
@@ -23152,16 +23120,16 @@ function DetailPane({
         ["Model", getNodeModelLabel(model, structuralNode)],
         ["Prompt", previewText(safeText(promptText), 100)]
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Recent Activity" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChildNodeList, { nodes: recentActivity })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Recent Activity" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ChildNodeList, { nodes: recentActivity })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Prompt (first 10 lines)" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExpandablePre, { text: promptText, limit: 800 })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Prompt (first 10 lines)" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: promptText, limit: 800 })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(DetailDisclosure, { title: "Observer Context", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FieldTable, { fields: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(DetailDisclosure, { title: "Observer Context", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FieldTable, { fields: [
           ["Parent", getNodeTitleByKey(model.nodesByKey, structuralNode.parentKey)],
           ["Started", fmtTime(record2.startedAt)],
           ["Completed", fmtTime(record2.completedAt)],
@@ -23174,28 +23142,28 @@ function DetailPane({
           ["Tool Calls", record2.totalToolCalls?.toString()],
           ["Tokens", record2.totalTokens?.toString()]
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Lineage" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Breadcrumbs, { pathKeys, model })
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Lineage" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Breadcrumbs, { pathKeys, model })
         ] })
       ] }),
-      record2.error && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section detail-error", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Error" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { className: "detail-pre", children: record2.error })
+      record2.error && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section detail-error", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Error" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("pre", { className: "detail-pre", children: record2.error })
       ] })
     ] });
   }
   if (selection.kind === "toolcall") {
     const record2 = snapshot.toolCalls.find((tool) => tool.id === selection.id);
-    if (!record2) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "detail-empty", children: "Tool call not found." });
+    if (!record2) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-empty", children: "Tool call not found." });
     const fallbackNode = structuralNode ?? model.nodesByKey.get(model.rootNodeKey);
     const promptFromArguments = extractNamedText(record2.arguments, ["prompt", "description", "task", "goal", "query", "message", "content", "input", "request"]);
     const promptText = structuralNode ? getNodePromptText(model, structuralNode) : promptFromArguments ? toPromptBlock(promptFromArguments) : UNAVAILABLE_FROM_EVENT_STREAM;
     const modelText = extractNamedText(record2.arguments, ["model", "modelName", "overrideModel", "override_model"]);
     const statusSummary = formatToolRecordStatusSummary(record2);
     const recentActivity = structuralNode ? getRecentActivityNodes(model, structuralNode, 8) : [];
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-content", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-content", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
         DetailHero,
         {
           kicker: "Background Task Detail",
@@ -23208,7 +23176,7 @@ function DetailPane({
           ]
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FieldTable, { fields: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FieldTable, { fields: [
         ["Status", statusSummary],
         ["ID", shortId(record2.id)],
         ["Type", "tool"],
@@ -23216,20 +23184,20 @@ function DetailPane({
         ["Model", modelText ? previewText(safeText(modelText), 80) : UNAVAILABLE_FROM_EVENT_STREAM],
         ["Prompt", previewText(safeText(promptText), 100)]
       ] }),
-      model.subagentMap.has(record2.id) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Spawned branch" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "detail-text", children: "This task tool call is represented as a subagent branch in the execution tree." })
+      model.subagentMap.has(record2.id) && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Spawned branch" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: "detail-text", children: "This task tool call is represented as a subagent branch in the execution tree." })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Recent Activity" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChildNodeList, { nodes: recentActivity })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Recent Activity" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ChildNodeList, { nodes: recentActivity })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Prompt (first 10 lines)" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExpandablePre, { text: promptText, limit: 800 })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Prompt (first 10 lines)" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: promptText, limit: 800 })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(DetailDisclosure, { title: "Observer Context", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FieldTable, { fields: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(DetailDisclosure, { title: "Observer Context", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FieldTable, { fields: [
           ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
           ["Parent", record2.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record2.parentToolCallId)],
           ["Success", record2.success != null ? String(record2.success) : void 0],
@@ -23238,25 +23206,25 @@ function DetailPane({
           ["Direct children", structuralNode ? String(structuralNode.childKeys.length) : void 0],
           ["Descendants", structuralNode ? String(structuralNode.descendantCount) : void 0]
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Lineage" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Breadcrumbs, { pathKeys, model })
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Lineage" }),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Breadcrumbs, { pathKeys, model })
         ] })
       ] }),
-      record2.arguments != null && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DetailDisclosure, { title: "Arguments", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      record2.arguments != null && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Arguments", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
         ExpandablePre,
         {
           text: typeof record2.arguments === "string" ? record2.arguments : JSON.stringify(record2.arguments, null, 2),
           limit: 1500
         }
       ) }),
-      record2.resultPreview != null && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DetailDisclosure, { title: "Result Preview", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExpandablePre, { text: record2.resultPreview, limit: 1e3 }) })
+      record2.resultPreview != null && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Result Preview", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: record2.resultPreview, limit: 1e3 }) })
     ] });
   }
   const record = snapshot.messages.find((message) => message.id === selection.id);
-  if (!record) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "detail-empty", children: "Message not found." });
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-content", children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+  if (!record) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-empty", children: "Message not found." });
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-content", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
       DetailHero,
       {
         kicker: "Background Task Detail",
@@ -23269,7 +23237,7 @@ function DetailPane({
         ]
       }
     ),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FieldTable, { fields: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FieldTable, { fields: [
       ["Status", "Complete"],
       ["ID", shortId(record.id)],
       ["Type", "assistant.message"],
@@ -23277,60 +23245,102 @@ function DetailPane({
       ["Model", UNAVAILABLE_FROM_EVENT_STREAM],
       ["Prompt", previewText(safeText(record.content), 100) || UNAVAILABLE_FROM_EVENT_STREAM]
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Prompt (first 10 lines)" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExpandablePre, { text: record.content ? toPromptBlock(record.content) : UNAVAILABLE_FROM_EVENT_STREAM, limit: 800 })
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Prompt (first 10 lines)" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: record.content ? toPromptBlock(record.content) : UNAVAILABLE_FROM_EVENT_STREAM, limit: 800 })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Recent Activity" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ChildNodeList, { nodes: [], emptyText: "No child activity for messages." })
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Recent Activity" }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ChildNodeList, { nodes: [], emptyText: "No child activity for messages." })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(DetailDisclosure, { title: "Observer Context", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FieldTable, { fields: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(DetailDisclosure, { title: "Observer Context", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FieldTable, { fields: [
         ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
         ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
         ["Tool Requests", record.toolRequestCount.toString()],
         ["Time", fmtTime(record.timestamp)]
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h4", { children: "Lineage" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Breadcrumbs, { pathKeys, model })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Lineage" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Breadcrumbs, { pathKeys, model })
       ] })
     ] }),
-    record.content && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DetailDisclosure, { title: "Content", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExpandablePre, { text: record.content, limit: 1e3 }) }),
-    record.reasoningAvailability !== "unsupported" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DetailDisclosure, { title: "Reasoning", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ReasoningSection, { availability: record.reasoningAvailability, text: record.reasoningText }) })
+    record.content && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Content", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: record.content, limit: 1e3 }) }),
+    record.reasoningAvailability !== "unsupported" && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Reasoning", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ReasoningSection, { availability: record.reasoningAvailability, text: record.reasoningText }) })
   ] });
 }
-function ReasoningSection({ availability, text }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "detail-section detail-section-inline", children: [
-    availability === "available" && (text ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", { className: "detail-pre reasoning-text", children: text }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "reasoning-empty", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "reasoning-empty-icon", children: "\u{1F4AD}" }),
-      "Reasoning was marked available but contained no text."
-    ] })),
-    availability === "empty" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "reasoning-empty", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "reasoning-empty-icon", children: "\u{1F4AD}" }),
-      "Reasoning field was present but empty for this message."
+
+// src/App.tsx
+var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
+function OverviewCards({ stats, subagents }) {
+  const running = subagents.filter((subagent) => subagent.status === "started").length;
+  const completed = subagents.filter((subagent) => subagent.status === "completed").length;
+  const failed = subagents.filter((subagent) => subagent.status === "failed").length;
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "overview", children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "card", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-value", children: stats.subagentCount }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-label", children: "Background Subagents" }),
+      stats.subagentCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "card-detail", children: [
+        running > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "status-running", children: [
+          "\u23F3",
+          running
+        ] }),
+        completed > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "status-complete", children: [
+          "\u2705",
+          completed
+        ] }),
+        failed > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "status-failed", children: [
+          "\u274C",
+          failed
+        ] })
+      ] })
     ] }),
-    availability === "unsupported" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "reasoning-empty", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "reasoning-empty-icon", children: "\u{1F6AB}" }),
-      "Reasoning is not available \u2014 the model or event type does not expose thinking text."
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "card", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-value", children: stats.toolCallCount }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-label", children: "Tool Calls" }),
+      stats.orphanToolCallCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "card-detail", children: [
+        stats.orphanToolCallCount,
+        " orphan"
+      ] })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "card", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-value", children: stats.messageCount }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-label", children: "Messages" })
+    ] }),
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "card", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-value", children: stats.ingestedEventCount }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "card-label", children: "Events Ingested" })
     ] })
   ] });
 }
-function FieldTable({ fields }) {
-  const visible = fields.filter(([, value]) => value != null && value !== "\u2014" && value !== "");
-  if (visible.length === 0) return null;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("table", { className: "field-table", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("tbody", { children: visible.map(([label, value]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("tr", { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { className: "field-label", children: label }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("td", { className: "field-value", children: value })
-  ] }, label)) }) });
-}
+var FatalBoundary = class extends import_react4.default.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error: error?.stack || error?.message || String(error) };
+  }
+  componentDidCatch(error) {
+    console.error("Agent Observer render failed", error);
+  }
+  render() {
+    if (this.state.error) {
+      return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "fatal-screen", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "fatal-box", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "fatal-title", children: "Agent Observer failed to render" }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "fatal-text", children: "React hit a runtime error while rendering the UI." }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("pre", { className: "fatal-pre", children: this.state.error })
+      ] }) });
+    }
+    return this.props.children;
+  }
+};
 function App() {
-  const [snapshot, setSnapshot] = (0, import_react.useState)(null);
-  const [error, setError] = (0, import_react.useState)(null);
-  const [selection, setSelection] = (0, import_react.useState)(null);
-  const lastRawRef = (0, import_react.useRef)(null);
-  const refresh = (0, import_react.useCallback)(async () => {
+  const [snapshot, setSnapshot] = (0, import_react4.useState)(null);
+  const [error, setError] = (0, import_react4.useState)(null);
+  const [selection, setSelection] = (0, import_react4.useState)(null);
+  const lastRawRef = (0, import_react4.useRef)(null);
+  const refresh = (0, import_react4.useCallback)(async () => {
     try {
       const raw = await copilot.getSnapshot();
       if (raw === lastRawRef.current) {
@@ -23349,7 +23359,7 @@ function App() {
       setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
-  (0, import_react.useEffect)(() => {
+  (0, import_react4.useEffect)(() => {
     void refresh();
     let inflight = false;
     const tick = async () => {
@@ -23378,59 +23388,62 @@ function App() {
       window.removeEventListener("focus", onVisible);
     };
   }, [refresh]);
-  const model = (0, import_react.useMemo)(() => snapshot ? buildActivityModel(snapshot) : null, [snapshot]);
-  (0, import_react.useEffect)(() => {
+  const model = (0, import_react4.useMemo)(() => snapshot ? buildActivityModel(snapshot) : null, [snapshot]);
+  (0, import_react4.useEffect)(() => {
     if (selection && !selectionExists(selection, model)) {
       setSelection(null);
     }
   }, [model, selection]);
   const hasData = snapshot && snapshot.stats.ingestedEventCount > 0;
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("header", { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h1", { children: "\u{1F52D} Agent Observer" }),
-      snapshot && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "badge", children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("header", { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h1", { children: "\u{1F52D} Agent Observer" }),
+      snapshot && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "badge", children: [
           snapshot.stats.subagentCount,
           " subagent",
           snapshot.stats.subagentCount !== 1 ? "s" : ""
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "badge", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "badge", children: [
           snapshot.stats.toolCallCount,
           " tool call",
           snapshot.stats.toolCallCount !== 1 ? "s" : ""
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "badge", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "badge", children: [
           snapshot.stats.messageCount,
           " msg",
           snapshot.stats.messageCount !== 1 ? "s" : ""
         ] })
       ] })
     ] }),
-    error && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "error-bar", children: [
+    error && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "error-bar", children: [
       "\u26A0\uFE0F ",
       error
     ] }),
-    !error && !snapshot && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("main", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "placeholder", children: "Loading\u2026" }) }),
-    !error && snapshot && !hasData && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("main", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "placeholder", children: [
+    !error && !snapshot && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("main", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "placeholder", children: "Loading\u2026" }) }),
+    !error && snapshot && !hasData && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("main", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "placeholder", children: [
       "No events captured yet.",
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("br", {}),
       "Trigger a subagent run to see activity here."
     ] }) }),
-    !error && snapshot && hasData && model && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(OverviewCards, { stats: snapshot.stats, subagents: snapshot.subagents }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "panels", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "panel-list", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-header", children: "Background Tasks" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ActivityWorkspace, { model, selection, onSelect: setSelection })
+    !error && snapshot && hasData && model && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(OverviewCards, { stats: snapshot.stats, subagents: snapshot.subagents }),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "panels", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "panel-list", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "panel-header", children: "Background Tasks" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ActivityWorkspace, { model, selection, onSelect: setSelection })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { className: "panel-detail", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "panel-header", children: "Subagent Details" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DetailPane, { snapshot, model, selection })
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "panel-detail", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "panel-header", children: "Subagent Details" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(DetailPane, { snapshot, model, selection })
         ] })
       ] })
     ] })
   ] });
 }
+
+// src/main.tsx
+var import_jsx_runtime5 = __toESM(require_jsx_runtime(), 1);
 window.addEventListener("error", (event) => {
   renderFatal(event.message || "Unhandled window error", event.error || event.message);
 });
@@ -23443,17 +23456,17 @@ try {
     throw new Error("Missing #root element");
   }
   (0, import_client.createRoot)(rootEl).render(
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FatalBoundary, { children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(App, {}) })
+    /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(FatalBoundary, { children: /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(App, {}) })
   );
 } catch (error) {
   renderFatal("Top-level boot failure", error);
 }
 /*! Bundled license information:
 
-react/cjs/react.development.js:
+scheduler/cjs/scheduler.development.js:
   (**
    * @license React
-   * react.development.js
+   * scheduler.development.js
    *
    * Copyright (c) Meta Platforms, Inc. and affiliates.
    *
@@ -23461,10 +23474,10 @@ react/cjs/react.development.js:
    * LICENSE file in the root directory of this source tree.
    *)
 
-scheduler/cjs/scheduler.development.js:
+react/cjs/react.development.js:
   (**
    * @license React
-   * scheduler.development.js
+   * react.development.js
    *
    * Copyright (c) Meta Platforms, Inc. and affiliates.
    *
