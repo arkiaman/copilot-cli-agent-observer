@@ -332,34 +332,29 @@ export function ActivityWorkspace({
     model,
     selection,
     onSelect,
+    search,
+    onSearchChange,
+    filters,
+    onToggleFilter,
+    query,
 }: {
     model: ActivityModel;
     selection: Selection;
     onSelect: (selection: Selection) => void;
+    search: string;
+    onSearchChange: (value: string) => void;
+    filters: FilterState;
+    onToggleFilter: (key: FilterKey) => void;
+    query: string;
 }) {
     const [viewMode, setViewMode] = useState<ViewMode>("tree");
-    const [search, setSearch] = useState("");
-    const [filters, setFilters] = useState<FilterState>({
-        subagents: true,
-        tools: true,
-        messages: true,
-        running: true,
-        complete: true,
-        failed: true,
-        root: true,
-    });
 
-    const query = search.trim().toLowerCase();
     const visibleTree = useMemo(
         () => buildVisibleTree(model, model.rootNodeKey, filters, query),
         [filters, model, query],
     );
 
-    const toggleFilter = useCallback((key: FilterKey) => {
-        setFilters((current) => ({ ...current, [key]: !current[key] }));
-    }, []);
-
-    const clearSearch = useCallback(() => setSearch(""), []);
+    const clearSearch = useCallback(() => onSearchChange(""), [onSearchChange]);
 
     return (
         <>
@@ -386,7 +381,7 @@ export function ActivityWorkspace({
                             className="search-input"
                             type="search"
                             value={search}
-                            onChange={(event) => setSearch(event.target.value)}
+                            onChange={(event) => onSearchChange(event.target.value)}
                             placeholder="Search subagents, tools, recent activity…"
                         />
                         {search && (
@@ -400,16 +395,16 @@ export function ActivityWorkspace({
                 <div className="toolbar-row toolbar-row-wrap">
                     <div className="filter-group">
                         <span className="filter-label">Type</span>
-                        <FilterButton active={filters.subagents} label="Subagents" onClick={() => toggleFilter("subagents")} />
-                        <FilterButton active={filters.tools} label="Tools" onClick={() => toggleFilter("tools")} />
-                        <FilterButton active={filters.messages} label="Messages" onClick={() => toggleFilter("messages")} />
+                        <FilterButton active={filters.subagents} label="Subagents" onClick={() => onToggleFilter("subagents")} />
+                        <FilterButton active={filters.tools} label="Tools" onClick={() => onToggleFilter("tools")} />
+                        <FilterButton active={filters.messages} label="Messages" onClick={() => onToggleFilter("messages")} />
                     </div>
                     <div className="filter-group">
                         <span className="filter-label">Status</span>
-                        <FilterButton active={filters.running} label="Running" onClick={() => toggleFilter("running")} />
-                        <FilterButton active={filters.complete} label="Complete" onClick={() => toggleFilter("complete")} />
-                        <FilterButton active={filters.failed} label="Failed" onClick={() => toggleFilter("failed")} />
-                        <FilterButton active={filters.root} label="Root / orphan" onClick={() => toggleFilter("root")} />
+                        <FilterButton active={filters.running} label="Running" onClick={() => onToggleFilter("running")} />
+                        <FilterButton active={filters.complete} label="Complete" onClick={() => onToggleFilter("complete")} />
+                        <FilterButton active={filters.failed} label="Failed" onClick={() => onToggleFilter("failed")} />
+                        <FilterButton active={filters.root} label="Root / orphan" onClick={() => onToggleFilter("root")} />
                     </div>
                 </div>
             </div>

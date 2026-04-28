@@ -156,6 +156,22 @@ export function App() {
     const [selection, setSelection] = useState<Selection>(null);
     const lastRawRef = useRef<string | null>(null);
 
+    // Shared filter/search state — drives both hierarchy and activity
+    const [search, setSearch] = useState("");
+    const [filters, setFilters] = useState<FilterState>({
+        subagents: true,
+        tools: true,
+        messages: true,
+        running: true,
+        complete: true,
+        failed: true,
+        root: true,
+    });
+    const query = search.trim().toLowerCase();
+    const toggleFilter = useCallback((key: FilterKey) => {
+        setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+    }, []);
+
     const refresh = useCallback(async () => {
         try {
             const raw = await copilot.getSnapshot();
@@ -251,14 +267,23 @@ export function App() {
                             model={model}
                             selection={selection}
                             onSelect={setSelection}
-                            filters={{ subagents: true, tools: true, messages: true, running: true, complete: true, failed: true, root: true }}
-                            query=""
+                            filters={filters}
+                            query={query}
                         />
                     </CollapsibleSection>
 
                     <div className="panels">
                         <CollapsibleSection id="activity" title="Background Activity" open={layout.activity} onToggle={toggle} className="panel-list">
-                            <ActivityWorkspace model={model} selection={selection} onSelect={setSelection} />
+                            <ActivityWorkspace
+                                model={model}
+                                selection={selection}
+                                onSelect={setSelection}
+                                search={search}
+                                onSearchChange={setSearch}
+                                filters={filters}
+                                onToggleFilter={toggleFilter}
+                                query={query}
+                            />
                         </CollapsibleSection>
                         <CollapsibleSection id="details" title="Subagent Details" open={layout.details} onToggle={toggle} className="panel-detail">
                             <DetailPane snapshot={snapshot} model={model} selection={selection} />

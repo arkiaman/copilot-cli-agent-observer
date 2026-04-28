@@ -22699,28 +22699,19 @@ function FilterButton({
 function ActivityWorkspace({
   model,
   selection,
-  onSelect
+  onSelect,
+  search,
+  onSearchChange,
+  filters,
+  onToggleFilter,
+  query
 }) {
   const [viewMode, setViewMode] = (0, import_react.useState)("tree");
-  const [search, setSearch] = (0, import_react.useState)("");
-  const [filters, setFilters] = (0, import_react.useState)({
-    subagents: true,
-    tools: true,
-    messages: true,
-    running: true,
-    complete: true,
-    failed: true,
-    root: true
-  });
-  const query = search.trim().toLowerCase();
   const visibleTree = (0, import_react.useMemo)(
     () => buildVisibleTree(model, model.rootNodeKey, filters, query),
     [filters, model, query]
   );
-  const toggleFilter = (0, import_react.useCallback)((key) => {
-    setFilters((current) => ({ ...current, [key]: !current[key] }));
-  }, []);
-  const clearSearch = (0, import_react.useCallback)(() => setSearch(""), []);
+  const clearSearch = (0, import_react.useCallback)(() => onSearchChange(""), [onSearchChange]);
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "activity-toolbar", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "toolbar-row", children: [
@@ -22751,7 +22742,7 @@ function ActivityWorkspace({
               className: "search-input",
               type: "search",
               value: search,
-              onChange: (event) => setSearch(event.target.value),
+              onChange: (event) => onSearchChange(event.target.value),
               placeholder: "Search subagents, tools, recent activity\u2026"
             }
           ),
@@ -22761,16 +22752,16 @@ function ActivityWorkspace({
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "toolbar-row toolbar-row-wrap", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "filter-group", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-label", children: "Type" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.subagents, label: "Subagents", onClick: () => toggleFilter("subagents") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.tools, label: "Tools", onClick: () => toggleFilter("tools") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.messages, label: "Messages", onClick: () => toggleFilter("messages") })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.subagents, label: "Subagents", onClick: () => onToggleFilter("subagents") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.tools, label: "Tools", onClick: () => onToggleFilter("tools") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.messages, label: "Messages", onClick: () => onToggleFilter("messages") })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "filter-group", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-label", children: "Status" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.running, label: "Running", onClick: () => toggleFilter("running") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.complete, label: "Complete", onClick: () => toggleFilter("complete") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.failed, label: "Failed", onClick: () => toggleFilter("failed") }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.root, label: "Root / orphan", onClick: () => toggleFilter("root") })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.running, label: "Running", onClick: () => onToggleFilter("running") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.complete, label: "Complete", onClick: () => onToggleFilter("complete") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.failed, label: "Failed", onClick: () => onToggleFilter("failed") }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.root, label: "Root / orphan", onClick: () => onToggleFilter("root") })
         ] })
       ] })
     ] }),
@@ -22902,43 +22893,18 @@ function AgentHierarchyPanel({
     () => buildAgentHierarchy(model, filters, query),
     [model, filters, query]
   );
-  const hasSubagents = model.subagentMap.size > 0;
-  const [panelOpen, setPanelOpen] = (0, import_react2.useState)(null);
-  const isOpen = query ? true : panelOpen ?? hasSubagents;
   if (!hierarchy) return null;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `hg-panel ${isOpen ? "hg-panel-open" : "hg-panel-closed"}`, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-      "button",
-      {
-        type: "button",
-        className: "hg-panel-header",
-        onClick: () => {
-          if (query) return;
-          setPanelOpen((v) => !(v ?? hasSubagents));
-        },
-        children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hg-panel-toggle", children: isOpen ? "\u25BE" : "\u25B8" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hg-panel-title", children: "Agent Hierarchy" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "hg-panel-count", children: [
-            model.subagentMap.size,
-            " subagent",
-            model.subagentMap.size !== 1 ? "s" : ""
-          ] })
-        ]
-      }
-    ),
-    isOpen && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hg-graph", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-      HierarchyCard,
-      {
-        agentNode: hierarchy,
-        model,
-        selection,
-        onSelect,
-        defaultExpanded: true,
-        query
-      }
-    ) })
-  ] });
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hg-graph", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    HierarchyCard,
+    {
+      agentNode: hierarchy,
+      model,
+      selection,
+      onSelect,
+      defaultExpanded: true,
+      query
+    }
+  ) });
 }
 
 // src/DetailPane.tsx
@@ -23393,6 +23359,20 @@ function App() {
   const [error, setError] = (0, import_react4.useState)(null);
   const [selection, setSelection] = (0, import_react4.useState)(null);
   const lastRawRef = (0, import_react4.useRef)(null);
+  const [search, setSearch] = (0, import_react4.useState)("");
+  const [filters, setFilters] = (0, import_react4.useState)({
+    subagents: true,
+    tools: true,
+    messages: true,
+    running: true,
+    complete: true,
+    failed: true,
+    root: true
+  });
+  const query = search.trim().toLowerCase();
+  const toggleFilter = (0, import_react4.useCallback)((key) => {
+    setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
   const refresh = (0, import_react4.useCallback)(async () => {
     try {
       const raw = await copilot.getSnapshot();
@@ -23488,12 +23468,24 @@ function App() {
           model,
           selection,
           onSelect: setSelection,
-          filters: { subagents: true, tools: true, messages: true, running: true, complete: true, failed: true, root: true },
-          query: ""
+          filters,
+          query
         }
       ) }),
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "panels", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "activity", title: "Background Activity", open: layout.activity, onToggle: toggle, className: "panel-list", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ActivityWorkspace, { model, selection, onSelect: setSelection }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "activity", title: "Background Activity", open: layout.activity, onToggle: toggle, className: "panel-list", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          ActivityWorkspace,
+          {
+            model,
+            selection,
+            onSelect: setSelection,
+            search,
+            onSearchChange: setSearch,
+            filters,
+            onToggleFilter: toggleFilter,
+            query
+          }
+        ) }),
         /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "details", title: "Subagent Details", open: layout.details, onToggle: toggle, className: "panel-detail", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(DetailPane, { snapshot, model, selection }) })
       ] })
     ] })

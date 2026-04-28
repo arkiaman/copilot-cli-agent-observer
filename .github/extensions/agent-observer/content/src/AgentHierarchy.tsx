@@ -129,38 +129,18 @@ export function AgentHierarchyPanel({
         [model, filters, query],
     );
 
-    const hasSubagents = model.subagentMap.size > 0;
-    const [panelOpen, setPanelOpen] = useState<boolean | null>(null);
-    const isOpen = query ? true : (panelOpen ?? hasSubagents);
-
     if (!hierarchy) return null;
 
     return (
-        <div className={`hg-panel ${isOpen ? "hg-panel-open" : "hg-panel-closed"}`}>
-            <button
-                type="button"
-                className="hg-panel-header"
-                onClick={() => {
-                    if (query) return;
-                    setPanelOpen((v) => !(v ?? hasSubagents));
-                }}
-            >
-                <span className="hg-panel-toggle">{isOpen ? "▾" : "▸"}</span>
-                <span className="hg-panel-title">Agent Hierarchy</span>
-                <span className="hg-panel-count">{model.subagentMap.size} subagent{model.subagentMap.size !== 1 ? "s" : ""}</span>
-            </button>
-            {isOpen && (
-                <div className="hg-graph">
-                    <HierarchyCard
-                        agentNode={hierarchy}
-                        model={model}
-                        selection={selection}
-                        onSelect={onSelect}
-                        defaultExpanded={true}
-                        query={query}
-                    />
-                </div>
-            )}
+        <div className="hg-graph">
+            <HierarchyCard
+                agentNode={hierarchy}
+                model={model}
+                selection={selection}
+                onSelect={onSelect}
+                defaultExpanded={true}
+                query={query}
+            />
         </div>
     );
 }
