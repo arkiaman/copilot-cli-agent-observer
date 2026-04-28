@@ -23266,15 +23266,106 @@ function useSectionLayout() {
   }, []);
   return { layout, toggle };
 }
+var SIZES_KEY = "agent-observer:panel-sizes";
+var DEFAULT_SIZES = { hierarchyPct: 30, activityPct: 60 };
+function loadSizes() {
+  try {
+    const raw = localStorage.getItem(SIZES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        hierarchyPct: clampPct(parsed.hierarchyPct ?? DEFAULT_SIZES.hierarchyPct),
+        activityPct: clampPct(parsed.activityPct ?? DEFAULT_SIZES.activityPct)
+      };
+    }
+  } catch {
+  }
+  return { ...DEFAULT_SIZES };
+}
+function clampPct(v) {
+  return Math.max(10, Math.min(90, v));
+}
+function usePanelSizes() {
+  const [sizes, setSizes] = (0, import_react4.useState)(loadSizes);
+  const update = (0, import_react4.useCallback)((partial) => {
+    setSizes((prev) => {
+      const next = {
+        hierarchyPct: clampPct(partial.hierarchyPct ?? prev.hierarchyPct),
+        activityPct: clampPct(partial.activityPct ?? prev.activityPct)
+      };
+      try {
+        localStorage.setItem(SIZES_KEY, JSON.stringify(next));
+      } catch {
+      }
+      return next;
+    });
+  }, []);
+  return { sizes, updateSizes: update };
+}
+var MIN_PX = 80;
+function ResizeHandle({
+  direction,
+  containerRef,
+  onResize
+}) {
+  const dragging = (0, import_react4.useRef)(false);
+  const onPointerDown = (0, import_react4.useCallback)((e) => {
+    e.preventDefault();
+    dragging.current = true;
+    const cursor = direction === "vertical" ? "row-resize" : "col-resize";
+    document.body.style.cursor = cursor;
+    document.body.style.userSelect = "none";
+    const handleMove = (ev) => {
+      if (!dragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      let pct;
+      if (direction === "vertical") {
+        const total = rect.height;
+        const offset = ev.clientY - rect.top;
+        if (total < MIN_PX * 2) return;
+        pct = clampPct(offset / total * 100);
+        if (offset < MIN_PX) pct = clampPct(MIN_PX / total * 100);
+        if (total - offset < MIN_PX) pct = clampPct((total - MIN_PX) / total * 100);
+      } else {
+        const total = rect.width;
+        const offset = ev.clientX - rect.left;
+        if (total < MIN_PX * 2) return;
+        pct = clampPct(offset / total * 100);
+        if (offset < MIN_PX) pct = clampPct(MIN_PX / total * 100);
+        if (total - offset < MIN_PX) pct = clampPct((total - MIN_PX) / total * 100);
+      }
+      onResize(pct);
+    };
+    const handleUp = () => {
+      dragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("pointermove", handleMove);
+      document.removeEventListener("pointerup", handleUp);
+    };
+    document.addEventListener("pointermove", handleMove);
+    document.addEventListener("pointerup", handleUp);
+  }, [direction, containerRef, onResize]);
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+    "div",
+    {
+      className: `resize-handle resize-handle-${direction}`,
+      onPointerDown,
+      role: "separator",
+      "aria-orientation": direction === "vertical" ? "horizontal" : "vertical"
+    }
+  );
+}
 function CollapsibleSection({
   id,
   title,
   open,
   onToggle,
   className,
+  style,
   children
 }) {
-  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: `collapsible-section ${className ?? ""} ${open ? "section-open" : "section-closed"}`, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: `collapsible-section ${className ?? ""} ${open ? "section-open" : "section-closed"}`, style, children: [
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
       "button",
       {
@@ -23427,8 +23518,20 @@ function App() {
       setSelection(null);
     }
   }, [model, selection]);
-  const hasData = snapshot && snapshot.stats.ingestedEventCount > 0;
   const { layout, toggle } = useSectionLayout();
+  const { sizes, updateSizes } = usePanelSizes();
+  const workspaceRef = (0, import_react4.useRef)(null);
+  const panelsRef = (0, import_react4.useRef)(null);
+  const hierarchyOpen = layout.hierarchy;
+  const activityOpen = layout.activity;
+  const detailsOpen = layout.details;
+  const hierarchyStyle = hierarchyOpen ? { flex: `0 0 ${sizes.hierarchyPct}%`, minHeight: MIN_PX, overflow: "hidden" } : {};
+  const panelsStyle = {
+    flex: hierarchyOpen ? `1 1 ${100 - sizes.hierarchyPct}%` : "1 1 100%",
+    minHeight: MIN_PX
+  };
+  const activityStyle = activityOpen ? { width: detailsOpen ? `${sizes.activityPct}%` : "100%", minWidth: MIN_PX } : {};
+  const detailStyle = detailsOpen ? { flex: 1, minWidth: MIN_PX } : {};
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("header", { children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h1", { children: "\u{1F52D} Agent Observer" }),
@@ -23455,38 +23558,51 @@ function App() {
       error
     ] }),
     !error && !snapshot && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("main", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "placeholder", children: "Loading\u2026" }) }),
-    !error && snapshot && !hasData && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("main", { children: /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "placeholder", children: [
-      "No events captured yet.",
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("br", {}),
-      "Trigger a subagent run to see activity here."
-    ] }) }),
-    !error && snapshot && hasData && model && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+    !error && snapshot && model && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(OverviewCards, { stats: snapshot.stats, subagents: snapshot.subagents }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "hierarchy", title: "Agent Hierarchy", open: layout.hierarchy, onToggle: toggle, className: "hierarchy-section", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-        AgentHierarchyPanel,
-        {
-          model,
-          selection,
-          onSelect: setSelection,
-          filters,
-          query
-        }
-      ) }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "panels", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "activity", title: "Background Activity", open: layout.activity, onToggle: toggle, className: "panel-list", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
-          ActivityWorkspace,
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "workspace-shell", ref: workspaceRef, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "hierarchy", title: "Agent Hierarchy", open: hierarchyOpen, onToggle: toggle, className: "hierarchy-section", style: hierarchyStyle, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          AgentHierarchyPanel,
           {
             model,
             selection,
             onSelect: setSelection,
-            search,
-            onSearchChange: setSearch,
             filters,
-            onToggleFilter: toggleFilter,
             query
           }
         ) }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "details", title: "Subagent Details", open: layout.details, onToggle: toggle, className: "panel-detail", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(DetailPane, { snapshot, model, selection }) })
+        hierarchyOpen && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+          ResizeHandle,
+          {
+            direction: "vertical",
+            containerRef: workspaceRef,
+            onResize: (pct) => updateSizes({ hierarchyPct: pct })
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "panels", ref: panelsRef, style: panelsStyle, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "activity", title: "Background Activity", open: activityOpen, onToggle: toggle, className: "panel-list", style: activityStyle, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            ActivityWorkspace,
+            {
+              model,
+              selection,
+              onSelect: setSelection,
+              search,
+              onSearchChange: setSearch,
+              filters,
+              onToggleFilter: toggleFilter,
+              query
+            }
+          ) }),
+          activityOpen && detailsOpen && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+            ResizeHandle,
+            {
+              direction: "horizontal",
+              containerRef: panelsRef,
+              onResize: (pct) => updateSizes({ activityPct: pct })
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "details", title: "Subagent Details", open: detailsOpen, onToggle: toggle, className: "panel-detail", style: detailStyle, children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(DetailPane, { snapshot, model, selection }) })
+        ] })
       ] })
     ] })
   ] });

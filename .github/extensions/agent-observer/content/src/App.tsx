@@ -44,6 +44,123 @@ function useSectionLayout() {
     return { layout, toggle };
 }
 
+/* ── Panel sizes persistence (drag-to-resize) ──────────────────────────── */
+
+const SIZES_KEY = "agent-observer:panel-sizes";
+
+interface PanelSizes {
+    /** Hierarchy section height as percentage of workspace-shell (0–100) */
+    hierarchyPct: number;
+    /** Activity panel width as percentage of the panels row (0–100) */
+    activityPct: number;
+}
+
+const DEFAULT_SIZES: PanelSizes = { hierarchyPct: 30, activityPct: 60 };
+
+function loadSizes(): PanelSizes {
+    try {
+        const raw = localStorage.getItem(SIZES_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            return {
+                hierarchyPct: clampPct(parsed.hierarchyPct ?? DEFAULT_SIZES.hierarchyPct),
+                activityPct: clampPct(parsed.activityPct ?? DEFAULT_SIZES.activityPct),
+            };
+        }
+    } catch { /* ignore */ }
+    return { ...DEFAULT_SIZES };
+}
+
+function clampPct(v: number): number {
+    return Math.max(10, Math.min(90, v));
+}
+
+function usePanelSizes() {
+    const [sizes, setSizes] = useState<PanelSizes>(loadSizes);
+
+    const update = useCallback((partial: Partial<PanelSizes>) => {
+        setSizes((prev) => {
+            const next = {
+                hierarchyPct: clampPct(partial.hierarchyPct ?? prev.hierarchyPct),
+                activityPct: clampPct(partial.activityPct ?? prev.activityPct),
+            };
+            try { localStorage.setItem(SIZES_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+            return next;
+        });
+    }, []);
+
+    return { sizes, updateSizes: update };
+}
+
+/* ── ResizeHandle — drag-to-resize between sections ────────────────────── */
+
+const MIN_PX = 80;
+
+function ResizeHandle({
+    direction,
+    containerRef,
+    onResize,
+}: {
+    direction: "horizontal" | "vertical";
+    containerRef: React.RefObject<HTMLElement | null>;
+    onResize: (pct: number) => void;
+}) {
+    const dragging = useRef(false);
+
+    const onPointerDown = useCallback((e: React.PointerEvent) => {
+        e.preventDefault();
+        dragging.current = true;
+
+        const cursor = direction === "vertical" ? "row-resize" : "col-resize";
+        document.body.style.cursor = cursor;
+        document.body.style.userSelect = "none";
+
+        const handleMove = (ev: PointerEvent) => {
+            if (!dragging.current || !containerRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+
+            let pct: number;
+            if (direction === "vertical") {
+                const total = rect.height;
+                const offset = ev.clientY - rect.top;
+                if (total < MIN_PX * 2) return;
+                pct = clampPct((offset / total) * 100);
+                // enforce min-px
+                if (offset < MIN_PX) pct = clampPct((MIN_PX / total) * 100);
+                if (total - offset < MIN_PX) pct = clampPct(((total - MIN_PX) / total) * 100);
+            } else {
+                const total = rect.width;
+                const offset = ev.clientX - rect.left;
+                if (total < MIN_PX * 2) return;
+                pct = clampPct((offset / total) * 100);
+                if (offset < MIN_PX) pct = clampPct((MIN_PX / total) * 100);
+                if (total - offset < MIN_PX) pct = clampPct(((total - MIN_PX) / total) * 100);
+            }
+            onResize(pct);
+        };
+
+        const handleUp = () => {
+            dragging.current = false;
+            document.body.style.cursor = "";
+            document.body.style.userSelect = "";
+            document.removeEventListener("pointermove", handleMove);
+            document.removeEventListener("pointerup", handleUp);
+        };
+
+        document.addEventListener("pointermove", handleMove);
+        document.addEventListener("pointerup", handleUp);
+    }, [direction, containerRef, onResize]);
+
+    return (
+        <div
+            className={`resize-handle resize-handle-${direction}`}
+            onPointerDown={onPointerDown}
+            role="separator"
+            aria-orientation={direction === "vertical" ? "horizontal" : "vertical"}
+        />
+    );
+}
+
 /* ── CollapsibleSection — reusable section with header toggle ──────────── */
 
 function CollapsibleSection({
@@ -52,6 +169,7 @@ function CollapsibleSection({
     open,
     onToggle,
     className,
+    style,
     children,
 }: {
     id: SectionId;
@@ -59,10 +177,11 @@ function CollapsibleSection({
     open: boolean;
     onToggle: (id: SectionId) => void;
     className?: string;
+    style?: React.CSSProperties;
     children: React.ReactNode;
 }) {
     return (
-        <section className={`collapsible-section ${className ?? ""} ${open ? "section-open" : "section-closed"}`}>
+        <section className={`collapsible-section ${className ?? ""} ${open ? "section-open" : "section-closed"}`} style={style}>
             <button
                 type="button"
                 className="section-toggle-header"
@@ -227,8 +346,31 @@ export function App() {
         }
     }, [model, selection]);
 
-    const hasData = snapshot && snapshot.stats.ingestedEventCount > 0;
     const { layout, toggle } = useSectionLayout();
+    const { sizes, updateSizes } = usePanelSizes();
+
+    // Refs for resize containers
+    const workspaceRef = useRef<HTMLDivElement | null>(null);
+    const panelsRef = useRef<HTMLDivElement | null>(null);
+
+    // Computed styles driven by sizes + collapse state
+    const hierarchyOpen = layout.hierarchy;
+    const activityOpen = layout.activity;
+    const detailsOpen = layout.details;
+
+    const hierarchyStyle: React.CSSProperties = hierarchyOpen
+        ? { flex: `0 0 ${sizes.hierarchyPct}%`, minHeight: MIN_PX, overflow: "hidden" }
+        : {};
+    const panelsStyle: React.CSSProperties = {
+        flex: hierarchyOpen ? `1 1 ${100 - sizes.hierarchyPct}%` : "1 1 100%",
+        minHeight: MIN_PX,
+    };
+    const activityStyle: React.CSSProperties = activityOpen
+        ? { width: detailsOpen ? `${sizes.activityPct}%` : "100%", minWidth: MIN_PX }
+        : {};
+    const detailStyle: React.CSSProperties = detailsOpen
+        ? { flex: 1, minWidth: MIN_PX }
+        : {};
 
     return (
         <>
@@ -249,45 +391,55 @@ export function App() {
                 <main><div className="placeholder">Loading…</div></main>
             )}
 
-            {!error && snapshot && !hasData && (
-                <main>
-                    <div className="placeholder">
-                        No events captured yet.<br />
-                        Trigger a subagent run to see activity here.
-                    </div>
-                </main>
-            )}
-
-            {!error && snapshot && hasData && model && (
+            {!error && snapshot && model && (
                 <>
                     <OverviewCards stats={snapshot.stats} subagents={snapshot.subagents} />
 
-                    <CollapsibleSection id="hierarchy" title="Agent Hierarchy" open={layout.hierarchy} onToggle={toggle} className="hierarchy-section">
-                        <AgentHierarchyPanel
-                            model={model}
-                            selection={selection}
-                            onSelect={setSelection}
-                            filters={filters}
-                            query={query}
-                        />
-                    </CollapsibleSection>
-
-                    <div className="panels">
-                        <CollapsibleSection id="activity" title="Background Activity" open={layout.activity} onToggle={toggle} className="panel-list">
-                            <ActivityWorkspace
+                    <div className="workspace-shell" ref={workspaceRef}>
+                        <CollapsibleSection id="hierarchy" title="Agent Hierarchy" open={hierarchyOpen} onToggle={toggle} className="hierarchy-section" style={hierarchyStyle}>
+                            <AgentHierarchyPanel
                                 model={model}
                                 selection={selection}
                                 onSelect={setSelection}
-                                search={search}
-                                onSearchChange={setSearch}
                                 filters={filters}
-                                onToggleFilter={toggleFilter}
                                 query={query}
                             />
                         </CollapsibleSection>
-                        <CollapsibleSection id="details" title="Subagent Details" open={layout.details} onToggle={toggle} className="panel-detail">
-                            <DetailPane snapshot={snapshot} model={model} selection={selection} />
-                        </CollapsibleSection>
+
+                        {hierarchyOpen && (
+                            <ResizeHandle
+                                direction="vertical"
+                                containerRef={workspaceRef}
+                                onResize={(pct) => updateSizes({ hierarchyPct: pct })}
+                            />
+                        )}
+
+                        <div className="panels" ref={panelsRef} style={panelsStyle}>
+                            <CollapsibleSection id="activity" title="Background Activity" open={activityOpen} onToggle={toggle} className="panel-list" style={activityStyle}>
+                                <ActivityWorkspace
+                                    model={model}
+                                    selection={selection}
+                                    onSelect={setSelection}
+                                    search={search}
+                                    onSearchChange={setSearch}
+                                    filters={filters}
+                                    onToggleFilter={toggleFilter}
+                                    query={query}
+                                />
+                            </CollapsibleSection>
+
+                            {activityOpen && detailsOpen && (
+                                <ResizeHandle
+                                    direction="horizontal"
+                                    containerRef={panelsRef}
+                                    onResize={(pct) => updateSizes({ activityPct: pct })}
+                                />
+                            )}
+
+                            <CollapsibleSection id="details" title="Subagent Details" open={detailsOpen} onToggle={toggle} className="panel-detail" style={detailStyle}>
+                                <DetailPane snapshot={snapshot} model={model} selection={selection} />
+                            </CollapsibleSection>
+                        </div>
                     </div>
                 </>
             )}

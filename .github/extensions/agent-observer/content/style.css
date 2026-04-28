@@ -157,14 +157,21 @@ main {
 }
 
 /* ── Two-panel layout ────────────────────────────────────────────────────── */
+.workspace-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
 .panels {
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-height: 0;
 }
 .panel-list {
-  width: 60%;
-  min-width: 360px;
+  min-width: 200px;
   border-right: 1px solid #313244;
   display: flex;
   flex-direction: column;
@@ -177,6 +184,36 @@ main {
   flex-direction: column;
   overflow: hidden;
   background: linear-gradient(180deg, rgba(17, 17, 27, 0.42), transparent 24%);
+}
+
+/* ── Resize handles ──────────────────────────────────────────────────────── */
+.resize-handle {
+  flex-shrink: 0;
+  background: transparent;
+  transition: background 0.15s;
+  z-index: 10;
+}
+.resize-handle-vertical {
+  height: 4px;
+  cursor: row-resize;
+}
+.resize-handle-horizontal {
+  width: 4px;
+  cursor: col-resize;
+}
+.resize-handle:hover,
+.resize-handle:active {
+  background: #cba6f7;
+}
+.resize-handle-vertical:hover,
+.resize-handle-vertical:active {
+  height: 6px;
+  margin: -1px 0;
+}
+.resize-handle-horizontal:hover,
+.resize-handle-horizontal:active {
+  width: 6px;
+  margin: 0 -1px;
 }
 /* ── Collapsible section headers ─────────────────────────────────────────── */
 .collapsible-section {
@@ -896,7 +933,8 @@ main {
 
 /* Section wrapper placed between overview cards and lower panels */
 .hierarchy-section {
-  margin: 0.25rem 0.75rem 0.5rem;
+  margin: 0;
+  overflow: auto;
 }
 
 /* Panel chrome */
