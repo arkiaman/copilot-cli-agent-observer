@@ -43,7 +43,7 @@ This is an **alpha release** focused on **read-only observability**:
 | Requirement | Details |
 |---|---|
 | **GitHub Copilot CLI** | Installed and working (`copilot` command available). Tested against CLI `1.0.36` |
-| **Plugin support** | No extra experimental toggle required for `copilot plugin ...` on current CLI builds |
+| **Experimental mode** | **Required for Agent Observer runtime.** Enable with `/experimental on` or start CLI with `copilot --experimental`. The observer depends on the `EXTENSIONS` experimental feature flag |
 | **Node.js** | v20.11+ with `node` and `npm` on PATH (the extension uses `import.meta.dirname`, bootstraps dependencies, and spawns `node` for the native window) |
 | **Platform** | Windows (x64), macOS (arm64/x64), Linux (x64). Native webview support varies — see [Compatibility](#compatibility) |
 
@@ -60,7 +60,7 @@ copilot plugin install copilot-cli-agent-observer@copilot-cli-agent-observer
 
 This uses the marketplace manifest in `.github/plugin/marketplace.json` and avoids the deprecation warning shown for direct repo installs in current CLI builds.
 
-The plugin manager itself is documented and available in standard CLI help. What remains early-moving is the extension runtime inside `.github/extensions/agent-observer/`, which depends on Copilot CLI extension APIs that may still change between CLI releases.
+**Important:** plugin installation works through the standard plugin manager, but Agent Observer itself will not load unless Copilot CLI experimental mode is enabled, because the runtime depends on the `EXTENSIONS` experimental feature flag.
 
 ### Option 2: Direct repo install (still works, but deprecated by CLI)
 
@@ -94,7 +94,7 @@ Installed plugins are stored under `~/.copilot/installed-plugins/...`, and the b
 
 ## What happens on first load
 
-When Copilot CLI starts a session with plugin installed:
+When Copilot CLI starts a session with plugin installed **and experimental mode enabled**:
 
 1. **Bootstrap** — extension checks for `node_modules/` and installs dependencies if needed (first run only, takes a few seconds). When `package-lock.json` is present it uses deterministic `npm ci --omit=dev --no-audit --no-fund`.
 2. **Session attach** — the observer wires into the active session's event stream, capturing all agent and tool activity
@@ -220,7 +220,8 @@ The native window is powered by [`@webviewjs/webview`](https://github.com/webvie
 ### Known limitations
 
 - **Alpha quality** — expect rough edges, especially around session transitions and edge-case event types
-- **Extension API churn** — plugin installation is documented and supported, but the underlying extension/runtime APIs used by Agent Observer are still early and may change across Copilot CLI releases
+- **Experimental runtime dependency** — this plugin installs through the normal plugin manager, but actual observer tools/commands depend on Copilot CLI's `EXTENSIONS` experimental feature flag
+- **Extension API churn** — the underlying extension/runtime APIs used by Agent Observer are still early and may change across Copilot CLI releases
 - **Read-only** — the observer cannot influence agent behavior; it is a passive listener
 - **Single session** — observes one Copilot CLI session at a time; switching sessions resets the view
 - **No persistence** — closing the window or ending the session discards all captured data
