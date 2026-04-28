@@ -22758,7 +22758,8 @@ function buildAgentHierarchy(model, filters, query) {
       if (!selfMatchesStatus && agentChildren.length === 0) return null;
       if (lowerQuery && !selfMatchesQuery && agentChildren.length === 0) return null;
     }
-    return { key: nodeKey, node, record, children: agentChildren, depth };
+    const recentPreview = getRecentActivityPreview(model, node);
+    return { key: nodeKey, node, record, children: agentChildren, depth, recentPreview };
   }
   function walkAgentsDeep(nodeKey, depth) {
     const node = model.nodesByKey.get(nodeKey);
@@ -22780,20 +22781,22 @@ function HierarchyCard({
   model,
   selection,
   onSelect,
-  defaultExpanded
+  defaultExpanded,
+  query
 }) {
-  const [expanded, setExpanded] = (0, import_react.useState)(defaultExpanded);
-  const { node, record, children, depth } = agentNode;
+  const [manualExpanded, setManualExpanded] = (0, import_react.useState)(null);
+  const { node, record, children, depth, recentPreview } = agentNode;
   const isRoot = node.kind === "root";
   const isSelected = selectionKey(selection) === `${node.kind}:${node.id}`;
   const hasChildren = children.length > 0;
+  const expanded = query ? true : manualExpanded ?? defaultExpanded;
   const displayName = isRoot ? "Root session" : record?.agentDisplayName || record?.agentName || shortId(node.id);
   const statusText = isRoot ? "Active" : titleCase(normalizeStatus(node.status));
   const icon = isRoot ? "\u{1F9ED}" : statusIcon(node.status);
   const sClass = isRoot ? "" : statusClass(node.status);
   const durationMs = isRoot ? void 0 : inferDurationMsForNode(model, node);
   const eventCount = node.descendantCount;
-  const recentLine = getRecentActivityPreview(model, node);
+  const recentLine = recentPreview;
   const handleClick = () => {
     onSelect(selectionForNode(node));
   };
@@ -22813,7 +22816,7 @@ function HierarchyCard({
                 className: "hierarchy-card-toggle",
                 onClick: (e) => {
                   e.stopPropagation();
-                  setExpanded((v) => !v);
+                  setManualExpanded((v) => !(v ?? defaultExpanded));
                 },
                 role: "button",
                 tabIndex: -1,
@@ -22843,7 +22846,8 @@ function HierarchyCard({
         model,
         selection,
         onSelect,
-        defaultExpanded: child.depth < 2
+        defaultExpanded: child.depth < 2,
+        query
       },
       child.key
     )) })
@@ -22889,7 +22893,8 @@ function AgentHierarchyPanel({
         model,
         selection,
         onSelect,
-        defaultExpanded: true
+        defaultExpanded: true,
+        query
       }
     ) })
   ] });
