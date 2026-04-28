@@ -23226,7 +23226,7 @@ function DetailPane({
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(FieldTable, { fields: [
         ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
         ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
-        ["Tool Requests", record.toolRequestCount.toString()],
+        ["Tool Requests", record.toolRequestCount?.toString()],
         ["Time", fmtTime(record.timestamp)]
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [

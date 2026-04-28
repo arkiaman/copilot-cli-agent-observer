@@ -434,7 +434,7 @@ export function DetailPane({
                 <FieldTable fields={[
                     ["Branch", getNodeTitleByKey(model.nodesByKey, structuralNode?.parentKey)],
                     ["Parent", record.parentToolCallId === SYNTHETIC_ROOT_ID ? "root session" : shortId(record.parentToolCallId)],
-                    ["Tool Requests", record.toolRequestCount.toString()],
+                    ["Tool Requests", record.toolRequestCount?.toString()],
                     ["Time", fmtTime(record.timestamp)],
                 ]} />
                 <div className="detail-section">
