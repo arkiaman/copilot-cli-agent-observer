@@ -22537,6 +22537,7 @@ function TreeBranch({
 }) {
   const node = model.nodesByKey.get(branch.key);
   if (!node) return null;
+  const showSelf = node.kind === "root" || branch.matched;
   const isSelected = selectedNodeKey === node.key;
   const inSelectedPath = !isSelected && selectedPath.has(node.key);
   const isTopLevelBranch = node.parentKey === model.rootNodeKey && node.kind !== "root";
@@ -22556,6 +22557,23 @@ function TreeBranch({
     if (!childNode) return false;
     return selectedPath.has(child.key) || childNode.kind === "subagent" || childNode.childKeys.length > 0 || childNode.orphan;
   }) : branch.children;
+  if (!showSelf) {
+    if (visibleChildren.length === 0) return null;
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "tree-children tree-children-promoted", children: visibleChildren.map((child) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      TreeBranch,
+      {
+        branch: child,
+        model,
+        selectedNodeKey,
+        selectedPath,
+        collapsed,
+        onToggle,
+        onSelect,
+        query
+      },
+      child.key
+    )) });
+  }
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `tree-branch ${node.kind === "root" ? "tree-branch-root" : ""}`, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `tree-row ${isSelected ? "selected" : ""} ${inSelectedPath ? "selected-ancestor" : ""} ${isTopLevelBranch ? "tree-row-top-level" : ""}`, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "tree-row-main", children: [

@@ -1145,6 +1145,7 @@ function TreeBranch({
 }) {
     const node = model.nodesByKey.get(branch.key);
     if (!node) return null;
+    const showSelf = node.kind === "root" || branch.matched;
 
     const isSelected = selectedNodeKey === node.key;
     const inSelectedPath = !isSelected && selectedPath.has(node.key);
@@ -1175,6 +1176,27 @@ function TreeBranch({
             return selectedPath.has(child.key) || childNode.kind === "subagent" || childNode.childKeys.length > 0 || childNode.orphan;
         })
         : branch.children;
+
+    if (!showSelf) {
+        if (visibleChildren.length === 0) return null;
+        return (
+            <div className="tree-children tree-children-promoted">
+                {visibleChildren.map((child) => (
+                    <TreeBranch
+                        key={child.key}
+                        branch={child}
+                        model={model}
+                        selectedNodeKey={selectedNodeKey}
+                        selectedPath={selectedPath}
+                        collapsed={collapsed}
+                        onToggle={onToggle}
+                        onSelect={onSelect}
+                        query={query}
+                    />
+                ))}
+            </div>
+        );
+    }
 
     return (
         <div className={`tree-branch ${node.kind === "root" ? "tree-branch-root" : ""}`}>
