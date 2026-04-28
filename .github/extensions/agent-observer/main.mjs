@@ -92,6 +92,11 @@ const observerDumpTool = {
     handler: async () => JSON.stringify(store.dumpSummary(), null, 2),
 };
 
+const openObserverCommand = {
+    description: "Open the agent observer webview window.",
+    handler: async () => { await webview.show(); },
+};
+
 // ── Join session ────────────────────────────────────────────────────────────
 
 const session = await joinSession({
@@ -111,11 +116,11 @@ const session = await joinSession({
         ...webview.tools,
         observerDumpTool,
     ],
-    commands: [{
-        name: "agent-observer",
-        description: "Open the agent observer webview window.",
-        handler: async () => { await webview.show(); },
-    }],
+    commands: [
+        { name: "agent-observer", ...openObserverCommand },
+        { name: "agentobserver", ...openObserverCommand },
+        { name: "observer", ...openObserverCommand },
+    ],
 });
 
 // Attach immediately to the current foreground session as soon as the extension

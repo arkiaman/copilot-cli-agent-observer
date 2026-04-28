@@ -26,6 +26,7 @@ First public alpha release — read-only observability for GitHub Copilot CLI ag
 - **Missing slash command diagnosis** — clarify that `copilot plugin install ...` does not activate bundled `.github/extensions`, which is why `/agent-observer` may be missing after plugin-style installation
 - **One-command install path** — add `install.ps1` and `install.sh` so users can install the extension without manual folder copying
 - **No-restart reload path** — document using Copilot's `extensions_reload` tool from an existing experimental/extensions-enabled session after installing or updating the extension
+- **Slash command aliases** — add `/agentobserver` and `/observer` as compatibility aliases for CLI builds that do not dispatch `/agent-observer` reliably
 
 ### Changed
 
