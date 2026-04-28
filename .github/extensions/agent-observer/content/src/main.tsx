@@ -1498,9 +1498,9 @@ function HierarchyCard({
     const expanded = query ? true : (manualExpanded ?? defaultExpanded);
 
     const displayName = isRoot
-        ? "Root session"
+        ? "Main agent"
         : (record?.agentDisplayName || record?.agentName || shortId(node.id));
-    const statusText = isRoot ? "Active" : titleCase(normalizeStatus(node.status));
+    const statusText = isRoot ? null : titleCase(normalizeStatus(node.status));
     const icon = isRoot ? "🧭" : statusIcon(node.status);
     const sClass = isRoot ? "" : statusClass(node.status);
     const durationMs = isRoot ? undefined : inferDurationMsForNode(model, node);
@@ -1532,7 +1532,7 @@ function HierarchyCard({
                     )}
                     <span className={`hierarchy-card-icon ${sClass}`}>{icon}</span>
                     <span className="hierarchy-card-name">{displayName}</span>
-                    <span className={`hierarchy-card-status ${sClass}`}>{statusText}</span>
+                    {statusText && <span className={`hierarchy-card-status ${sClass}`}>{statusText}</span>}
                     {durationMs != null && <span className="hierarchy-card-duration">{fmtDuration(durationMs)}</span>}
                 </div>
                 <div className="hierarchy-card-bottom">
@@ -1587,7 +1587,7 @@ function AgentHierarchyPanel({
 
     const hasSubagents = model.subagentMap.size > 0;
     const [panelOpen, setPanelOpen] = useState<boolean | null>(null);
-    const isOpen = panelOpen ?? hasSubagents;
+    const isOpen = query ? true : (panelOpen ?? hasSubagents);
 
     if (!hierarchy) return null;
 
@@ -1596,11 +1596,14 @@ function AgentHierarchyPanel({
             <button
                 type="button"
                 className="hierarchy-header"
-                onClick={() => setPanelOpen((v) => !(v ?? hasSubagents))}
+                onClick={() => {
+                    if (query) return;
+                    setPanelOpen((v) => !(v ?? hasSubagents));
+                }}
             >
                 <span className="hierarchy-header-toggle">{isOpen ? "▾" : "▸"}</span>
                 <span className="hierarchy-header-title">Agent Hierarchy</span>
-                <span className="hierarchy-header-count">{model.subagentMap.size} agent{model.subagentMap.size !== 1 ? "s" : ""}</span>
+                <span className="hierarchy-header-count">{model.subagentMap.size} subagent{model.subagentMap.size !== 1 ? "s" : ""}</span>
             </button>
             {isOpen && (
                 <div className="hierarchy-body">
@@ -1704,22 +1707,23 @@ function ActivityWorkspace({
                 </div>
             </div>
 
-            <AgentHierarchyPanel
-                model={model}
-                selection={selection}
-                onSelect={onSelect}
-                filters={filters}
-                query={query}
-            />
-
             {viewMode === "tree" ? (
-                <ExecutionTreeView
-                    model={model}
-                    visibleTree={visibleTree}
-                    query={query}
-                    selection={selection}
-                    onSelect={onSelect}
-                />
+                <>
+                    <AgentHierarchyPanel
+                        model={model}
+                        selection={selection}
+                        onSelect={onSelect}
+                        filters={filters}
+                        query={query}
+                    />
+                    <ExecutionTreeView
+                        model={model}
+                        visibleTree={visibleTree}
+                        query={query}
+                        selection={selection}
+                        onSelect={onSelect}
+                    />
+                </>
             ) : (
                 <FlatTimelineView
                     items={model.items}

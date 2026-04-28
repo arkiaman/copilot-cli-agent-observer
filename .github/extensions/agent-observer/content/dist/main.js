@@ -22790,8 +22790,8 @@ function HierarchyCard({
   const isSelected = selectionKey(selection) === `${node.kind}:${node.id}`;
   const hasChildren = children.length > 0;
   const expanded = query ? true : manualExpanded ?? defaultExpanded;
-  const displayName = isRoot ? "Root session" : record?.agentDisplayName || record?.agentName || shortId(node.id);
-  const statusText = isRoot ? "Active" : titleCase(normalizeStatus(node.status));
+  const displayName = isRoot ? "Main agent" : record?.agentDisplayName || record?.agentName || shortId(node.id);
+  const statusText = isRoot ? null : titleCase(normalizeStatus(node.status));
   const icon = isRoot ? "\u{1F9ED}" : statusIcon(node.status);
   const sClass = isRoot ? "" : statusClass(node.status);
   const durationMs = isRoot ? void 0 : inferDurationMsForNode(model, node);
@@ -22825,7 +22825,7 @@ function HierarchyCard({
             ),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `hierarchy-card-icon ${sClass}`, children: icon }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-card-name", children: displayName }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `hierarchy-card-status ${sClass}`, children: statusText }),
+            statusText && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: `hierarchy-card-status ${sClass}`, children: statusText }),
             durationMs != null && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-card-duration", children: fmtDuration(durationMs) })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "hierarchy-card-bottom", children: [
@@ -22866,7 +22866,7 @@ function AgentHierarchyPanel({
   );
   const hasSubagents = model.subagentMap.size > 0;
   const [panelOpen, setPanelOpen] = (0, import_react.useState)(null);
-  const isOpen = panelOpen ?? hasSubagents;
+  const isOpen = query ? true : panelOpen ?? hasSubagents;
   if (!hierarchy) return null;
   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: `hierarchy-panel ${isOpen ? "hierarchy-panel-open" : "hierarchy-panel-closed"}`, children: [
     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -22874,13 +22874,16 @@ function AgentHierarchyPanel({
       {
         type: "button",
         className: "hierarchy-header",
-        onClick: () => setPanelOpen((v) => !(v ?? hasSubagents)),
+        onClick: () => {
+          if (query) return;
+          setPanelOpen((v) => !(v ?? hasSubagents));
+        },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-header-toggle", children: isOpen ? "\u25BE" : "\u25B8" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "hierarchy-header-title", children: "Agent Hierarchy" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "hierarchy-header-count", children: [
             model.subagentMap.size,
-            " agent",
+            " subagent",
             model.subagentMap.size !== 1 ? "s" : ""
           ] })
         ]
@@ -22977,26 +22980,28 @@ function ActivityWorkspace({
         ] })
       ] })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      AgentHierarchyPanel,
-      {
-        model,
-        selection,
-        onSelect,
-        filters,
-        query
-      }
-    ),
-    viewMode === "tree" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-      ExecutionTreeView,
-      {
-        model,
-        visibleTree,
-        query,
-        selection,
-        onSelect
-      }
-    ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    viewMode === "tree" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        AgentHierarchyPanel,
+        {
+          model,
+          selection,
+          onSelect,
+          filters,
+          query
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        ExecutionTreeView,
+        {
+          model,
+          visibleTree,
+          query,
+          selection,
+          onSelect
+        }
+      )
+    ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       FlatTimelineView,
       {
         items: model.items,
