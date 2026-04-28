@@ -167,7 +167,7 @@ The agent has access to the `agent_observer_show` tool, so natural-language requ
 | `agent_observer_close` | Close the observer window |
 | `observer_dump_summary` | Return a structured JSON summary of all captured events (useful in agent conversations) |
 
-`agent_observer_eval` is **not exposed in normal installs**. For local development/debugging only, set `AGENT_OBSERVER_DEV=1` before starting Copilot CLI.
+`agent_observer_eval` is **not exposed in normal installs**. For local development/debugging only, set `AGENT_OBSERVER_DEV=1` before starting Copilot CLI. That same flag also enables Agent Observer startup diagnostic logs.
 
 ### Reading the dashboard
 

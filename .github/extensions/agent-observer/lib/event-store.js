@@ -512,6 +512,7 @@ export function createEventStore() {
 export async function wireSession(store, session, opts = {}) {
     const log = opts.log ?? (() => Promise.resolve());
     const isCurrentGeneration = opts.isCurrentGeneration ?? (() => true);
+    const enableDiagnosticLogs = opts.enableDiagnosticLogs ?? false;
     const workspacePath = session.workspacePath;
 
     // Phase 1: Subscribe live events into a buffer
@@ -727,11 +728,13 @@ export async function wireSession(store, session, opts = {}) {
         }
     }
 
-    const snap = store.snapshot().stats;
-    await log(
-        `agent-observer: replay=${replayCount} persisted events, buffered=${bufferedCount} events, ` +
-        `store has ${snap.subagentCount} subagents, ${snap.toolCallCount} tool calls`,
-    );
+    if (enableDiagnosticLogs) {
+        const snap = store.snapshot().stats;
+        await log(
+            `agent-observer: replay=${replayCount} persisted events, buffered=${bufferedCount} events, ` +
+            `store has ${snap.subagentCount} subagents, ${snap.toolCallCount} tool calls`,
+        );
+    }
 
     return unwire;
 }

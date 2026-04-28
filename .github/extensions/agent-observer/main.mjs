@@ -22,6 +22,7 @@ import { createEventStore, wireSession } from "./lib/event-store.js";
 // ── Normalized event store ──────────────────────────────────────────────────
 
 const store = createEventStore();
+const isDevMode = process.env.AGENT_OBSERVER_DEV === "1";
 
 // ── Session-lifecycle state ─────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ async function startObserving() {
 
     const unwire = await wireSession(store, session, {
         log: (msg) => session.log(msg),
+        enableDiagnosticLogs: isDevMode,
         generation: gen,
         isCurrentGeneration: () => sessionGeneration === gen,
     });
@@ -67,7 +69,7 @@ const webview = new CopilotWebview({
     title: "Agent Observer",
     width: 1100,
     height: 750,
-    enableEvalTool: process.env.AGENT_OBSERVER_DEV === "1",
+    enableEvalTool: isDevMode,
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
 

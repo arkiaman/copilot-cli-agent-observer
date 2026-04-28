@@ -62,7 +62,7 @@ npm test
 
 Manual testing against a live Copilot CLI session is still recommended for UI and end-to-end changes.
 
-If you need the debug-only `agent_observer_eval` tool locally, set `AGENT_OBSERVER_DEV=1` before starting Copilot CLI.
+If you need the debug-only `agent_observer_eval` tool locally, set `AGENT_OBSERVER_DEV=1` before starting Copilot CLI. That same flag also enables Agent Observer startup diagnostic logs.
 
 ## Code style
 
