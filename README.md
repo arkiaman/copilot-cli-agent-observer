@@ -49,13 +49,40 @@ This is an **alpha release** focused on **read-only observability**:
 
 ## Install
 
-**Agent Observer is a Copilot CLI extension, not a Copilot CLI plugin.** Current Copilot CLI plugin installation does **not** activate bundled `.github/extensions/...` content, so installing this repo with `copilot plugin install ...` will not make `/agent-observer` appear.
+**Agent Observer is a Copilot CLI extension, not a Copilot CLI plugin.** Do **not** use `copilot plugin marketplace add Rogn/copilot-cli-agent-observer` or `copilot plugin install Rogn/copilot-cli-agent-observer`. This repo intentionally ships no `marketplace.json` or `plugin.json` manifest, because current Copilot CLI plugin packaging does **not** activate bundled `.github/extensions/...` content.
+
+If you try the marketplace command anyway, Copilot CLI fails with `File not found: marketplace.json ...`. That error is expected for this repo. Use extension install steps below instead.
 
 ### Option 1: User extension install (recommended)
 
+One-command install:
+
+**PowerShell**
+
+```powershell
+irm https://raw.githubusercontent.com/Rogn/copilot-cli-agent-observer/master/install.ps1 | iex
+```
+
+**bash**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Rogn/copilot-cli-agent-observer/master/install.sh | bash
+```
+
+Those scripts download this repo, copy `.github/extensions/agent-observer` into `~/.copilot/extensions/agent-observer`, and replace any previous install.
+
+After install, load the extension:
+
+- **Already in Copilot CLI with experimental/extensions enabled?** Ask Copilot to reload extensions (`extensions_reload`), then run `/agent-observer`.
+- **Starting fresh?** Run `copilot --experimental`, then `/env` to confirm and `/agent-observer` to launch.
+
+If Copilot CLI is already running without experimental/extensions enabled, start a new session with `copilot --experimental`.
+
+Manual install:
+
 1. Clone or download this repo.
 2. Copy `.github/extensions/agent-observer` into your user extensions directory as `~/.copilot/extensions/agent-observer`.
-3. Start Copilot CLI with experimental mode enabled.
+3. Load the extension using either the in-session reload or fresh-start path above.
 
 **PowerShell**
 
@@ -93,6 +120,8 @@ your-project/
 
 This is convenient for contributors and for sharing a pinned extension version inside a repository.
 
+If Copilot CLI is already open with experimental/extensions enabled, ask Copilot to reload extensions after copying. Otherwise start `copilot --experimental` from the project root.
+
 ### Option 3: Local development install
 
 For local development, either:
@@ -100,7 +129,7 @@ For local development, either:
 - work directly from a repo that contains `.github/extensions/agent-observer`, or
 - copy your working tree's `.github/extensions/agent-observer` into `~/.copilot/extensions/agent-observer`
 
-After local changes, restart Copilot CLI so the updated extension is reloaded.
+After local changes, copy the updated folder if needed, then either ask Copilot to reload extensions in an existing experimental/extensions-enabled session or restart with `copilot --experimental`.
 
 ---
 
@@ -189,7 +218,7 @@ After rebuilding, reload the observer window to pick up changes (close and reope
 To validate a local checkout end to end:
 
 1. Copy `.github/extensions/agent-observer` into `~/.copilot/extensions/agent-observer`
-2. Start a clean session with `copilot --experimental`
+2. If a Copilot session is already open with experimental/extensions enabled, ask Copilot to reload extensions (`extensions_reload`). Otherwise start a clean session with `copilot --experimental`
 3. Run `/env` and confirm `agent-observer` appears under **Extensions**
 4. Run `/agent-observer` to open the window
 

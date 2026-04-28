@@ -30,11 +30,15 @@ npm run watch    # Rebuild on changes
 To test a local checkout as a real Copilot CLI extension:
 
 1. Copy `.github/extensions/agent-observer` into `~/.copilot/extensions/agent-observer`
-2. Start a clean session with `copilot --experimental`
+2. If a Copilot session is already open with experimental/extensions enabled, ask Copilot to reload extensions (`extensions_reload`). Otherwise start a clean session with `copilot --experimental`
 3. Run `/env` and confirm `agent-observer` appears under **Extensions**
 4. Run `/agent-observer`
 
-If you change local extension files, restart Copilot CLI after copying the updated folder.
+Do not use `copilot plugin install ...` or `copilot plugin marketplace add ...` against this repo. Those paths are intentionally unsupported until Copilot CLI can ship bundled extensions through plugin packaging.
+
+For user-facing install docs, prefer `install.ps1` / `install.sh`. They install the extension by copying `.github/extensions/agent-observer` into the user's Copilot extensions directory.
+
+If you change local extension files, copy the updated folder if needed, then either ask Copilot to reload extensions in an existing experimental/extensions-enabled session or restart with `copilot --experimental`.
 
 ## Pull requests
 
