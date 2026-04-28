@@ -22819,61 +22819,76 @@ function HierarchyCard({
   const sClass = isRoot ? "" : statusClass(node.status);
   const durationMs = isRoot ? void 0 : inferDurationMsForNode(model, node);
   const eventCount = node.descendantCount;
-  const recentLine = recentPreview;
-  const handleClick = () => {
-    onSelect(selectionForNode(node));
-  };
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `hierarchy-card-wrap ${isRoot ? "hierarchy-root-wrap" : ""}`, children: [
+  const handleClick = () => onSelect(selectionForNode(node));
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `hg-node ${isRoot ? "hg-node-root" : ""} ${hasChildren ? "hg-node-parent" : "hg-node-leaf"}`, children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
       "button",
       {
         type: "button",
-        className: `hierarchy-card ${isRoot ? "hierarchy-root-card" : ""} ${isSelected ? "selected" : ""}`,
+        className: `hg-card ${isRoot ? "hg-card-root" : ""} ${isSelected ? "selected" : ""} ${sClass}`,
         onClick: handleClick,
         title: displayName,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "hierarchy-card-top", children: [
-            hasChildren && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "span",
-              {
-                className: "hierarchy-card-toggle",
-                onClick: (e) => {
-                  e.stopPropagation();
-                  setManualExpanded((v) => !(v ?? defaultExpanded));
-                },
-                role: "button",
-                tabIndex: -1,
-                children: expanded ? "\u25BE" : "\u25B8"
-              }
-            ),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `hierarchy-card-icon ${sClass}`, children: icon }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hierarchy-card-name", children: displayName }),
-            statusText && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `hierarchy-card-status ${sClass}`, children: statusText }),
-            durationMs != null && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hierarchy-card-duration", children: fmtDuration(durationMs) })
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "hg-card-header", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `hg-card-icon ${sClass}`, children: icon }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hg-card-name", children: displayName }),
+            statusText && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `hg-card-badge ${sClass}`, children: statusText })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "hierarchy-card-bottom", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "hierarchy-card-counts", children: [
-              pluralize(eventCount, "descendant"),
-              !isRoot && record?.totalToolCalls != null && ` \xB7 ${record.totalToolCalls} tools`
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hierarchy-card-recent", children: recentLine })
-          ] })
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: "hg-card-body", children: [
+            durationMs != null && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hg-card-duration", children: fmtDuration(durationMs) }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hg-card-counts", children: pluralize(eventCount, "descendant") }),
+            !isRoot && record?.totalToolCalls != null && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "hg-card-tools", children: [
+              record.totalToolCalls,
+              " tools"
+            ] })
+          ] }),
+          recentPreview && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hg-card-recent", children: recentPreview })
         ]
       }
     ),
-    isRoot && children.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hierarchy-empty", children: "No subagents spawned" }),
-    hasChildren && expanded && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hierarchy-children", children: children.map((child) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-      HierarchyCard,
+    hasChildren && !expanded && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+      "button",
       {
-        agentNode: child,
-        model,
-        selection,
-        onSelect,
-        defaultExpanded: child.depth < 2,
-        query
-      },
-      child.key
-    )) })
+        type: "button",
+        className: "hg-expand-toggle",
+        onClick: (e) => {
+          e.stopPropagation();
+          setManualExpanded(true);
+        },
+        children: [
+          "\u25B8 ",
+          children.length,
+          " child",
+          children.length !== 1 ? "ren" : ""
+        ]
+      }
+    ),
+    hasChildren && expanded && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+      !isRoot && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "button",
+        {
+          type: "button",
+          className: "hg-expand-toggle",
+          onClick: (e) => {
+            e.stopPropagation();
+            setManualExpanded(false);
+          },
+          children: "\u25BE collapse"
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hg-children", children: children.map((child) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        HierarchyCard,
+        {
+          agentNode: child,
+          model,
+          selection,
+          onSelect,
+          defaultExpanded: child.depth < 2,
+          query
+        },
+        child.key
+      )) })
+    ] })
   ] });
 }
 function AgentHierarchyPanel({
@@ -22891,20 +22906,20 @@ function AgentHierarchyPanel({
   const [panelOpen, setPanelOpen] = (0, import_react2.useState)(null);
   const isOpen = query ? true : panelOpen ?? hasSubagents;
   if (!hierarchy) return null;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `hierarchy-panel ${isOpen ? "hierarchy-panel-open" : "hierarchy-panel-closed"}`, children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: `hg-panel ${isOpen ? "hg-panel-open" : "hg-panel-closed"}`, children: [
     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
       "button",
       {
         type: "button",
-        className: "hierarchy-header",
+        className: "hg-panel-header",
         onClick: () => {
           if (query) return;
           setPanelOpen((v) => !(v ?? hasSubagents));
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hierarchy-header-toggle", children: isOpen ? "\u25BE" : "\u25B8" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hierarchy-header-title", children: "Agent Hierarchy" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "hierarchy-header-count", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hg-panel-toggle", children: isOpen ? "\u25BE" : "\u25B8" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "hg-panel-title", children: "Agent Hierarchy" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: "hg-panel-count", children: [
             model.subagentMap.size,
             " subagent",
             model.subagentMap.size !== 1 ? "s" : ""
@@ -22912,7 +22927,7 @@ function AgentHierarchyPanel({
         ]
       }
     ),
-    isOpen && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hierarchy-body", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    isOpen && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: "hg-graph", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       HierarchyCard,
       {
         agentNode: hierarchy,

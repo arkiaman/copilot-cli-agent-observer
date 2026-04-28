@@ -1,6 +1,6 @@
 /**
  * Agent Hierarchy panel — shows subagent parent/child relationships
- * as a collapsible card tree.
+ * as a visual graph with connector lines.
  */
 
 import React, { useState, useMemo } from "react";
@@ -8,6 +8,8 @@ import type { ActivityModel, Selection, FilterState, HierarchyAgentNode } from "
 import { UNAVAILABLE_FROM_EVENT_STREAM } from "./types.js";
 import { shortId, fmtDuration, statusIcon, statusClass, normalizeStatus, titleCase, pluralize, selectionKey } from "./helpers.js";
 import { inferDurationMsForNode, getRecentActivityPreview, selectionForNode, buildAgentHierarchy } from "./model.js";
+
+/* ── HierarchyCard — a single node in the graph ───────────────────────── */
 
 export function HierarchyCard({
     agentNode,
@@ -39,67 +41,75 @@ export function HierarchyCard({
     const sClass = isRoot ? "" : statusClass(node.status);
     const durationMs = isRoot ? undefined : inferDurationMsForNode(model, node);
     const eventCount = node.descendantCount;
-    const recentLine = recentPreview;
 
-    const handleClick = () => {
-        onSelect(selectionForNode(node));
-    };
+    const handleClick = () => onSelect(selectionForNode(node));
 
     return (
-        <div className={`hierarchy-card-wrap ${isRoot ? "hierarchy-root-wrap" : ""}`}>
+        <div className={`hg-node ${isRoot ? "hg-node-root" : ""} ${hasChildren ? "hg-node-parent" : "hg-node-leaf"}`}>
             <button
                 type="button"
-                className={`hierarchy-card ${isRoot ? "hierarchy-root-card" : ""} ${isSelected ? "selected" : ""}`}
+                className={`hg-card ${isRoot ? "hg-card-root" : ""} ${isSelected ? "selected" : ""} ${sClass}`}
                 onClick={handleClick}
                 title={displayName}
             >
-                <div className="hierarchy-card-top">
-                    {hasChildren && (
-                        <span
-                            className="hierarchy-card-toggle"
-                            onClick={(e) => { e.stopPropagation(); setManualExpanded((v) => !(v ?? defaultExpanded)); }}
-                            role="button"
-                            tabIndex={-1}
-                        >
-                            {expanded ? "▾" : "▸"}
-                        </span>
+                <div className="hg-card-header">
+                    <span className={`hg-card-icon ${sClass}`}>{icon}</span>
+                    <span className="hg-card-name">{displayName}</span>
+                    {statusText && <span className={`hg-card-badge ${sClass}`}>{statusText}</span>}
+                </div>
+                <div className="hg-card-body">
+                    {durationMs != null && <span className="hg-card-duration">{fmtDuration(durationMs)}</span>}
+                    <span className="hg-card-counts">{pluralize(eventCount, "descendant")}</span>
+                    {!isRoot && record?.totalToolCalls != null && (
+                        <span className="hg-card-tools">{record.totalToolCalls} tools</span>
                     )}
-                    <span className={`hierarchy-card-icon ${sClass}`}>{icon}</span>
-                    <span className="hierarchy-card-name">{displayName}</span>
-                    {statusText && <span className={`hierarchy-card-status ${sClass}`}>{statusText}</span>}
-                    {durationMs != null && <span className="hierarchy-card-duration">{fmtDuration(durationMs)}</span>}
                 </div>
-                <div className="hierarchy-card-bottom">
-                    <span className="hierarchy-card-counts">
-                        {pluralize(eventCount, "descendant")}
-                        {!isRoot && record?.totalToolCalls != null && ` · ${record.totalToolCalls} tools`}
-                    </span>
-                    <span className="hierarchy-card-recent">{recentLine}</span>
-                </div>
+                {recentPreview && (
+                    <div className="hg-card-recent">{recentPreview}</div>
+                )}
             </button>
 
-            {isRoot && children.length === 0 && (
-                <div className="hierarchy-empty">No subagents spawned</div>
+            {hasChildren && !expanded && (
+                <button
+                    type="button"
+                    className="hg-expand-toggle"
+                    onClick={(e) => { e.stopPropagation(); setManualExpanded(true); }}
+                >
+                    ▸ {children.length} child{children.length !== 1 ? "ren" : ""}
+                </button>
             )}
 
             {hasChildren && expanded && (
-                <div className="hierarchy-children">
-                    {children.map((child) => (
-                        <HierarchyCard
-                            key={child.key}
-                            agentNode={child}
-                            model={model}
-                            selection={selection}
-                            onSelect={onSelect}
-                            defaultExpanded={child.depth < 2}
-                            query={query}
-                        />
-                    ))}
-                </div>
+                <>
+                    {!isRoot && (
+                        <button
+                            type="button"
+                            className="hg-expand-toggle"
+                            onClick={(e) => { e.stopPropagation(); setManualExpanded(false); }}
+                        >
+                            ▾ collapse
+                        </button>
+                    )}
+                    <div className="hg-children">
+                        {children.map((child) => (
+                            <HierarchyCard
+                                key={child.key}
+                                agentNode={child}
+                                model={model}
+                                selection={selection}
+                                onSelect={onSelect}
+                                defaultExpanded={child.depth < 2}
+                                query={query}
+                            />
+                        ))}
+                    </div>
+                </>
             )}
         </div>
     );
 }
+
+/* ── AgentHierarchyPanel — the full hierarchy section ─────────────────── */
 
 export function AgentHierarchyPanel({
     model,
@@ -126,21 +136,21 @@ export function AgentHierarchyPanel({
     if (!hierarchy) return null;
 
     return (
-        <div className={`hierarchy-panel ${isOpen ? "hierarchy-panel-open" : "hierarchy-panel-closed"}`}>
+        <div className={`hg-panel ${isOpen ? "hg-panel-open" : "hg-panel-closed"}`}>
             <button
                 type="button"
-                className="hierarchy-header"
+                className="hg-panel-header"
                 onClick={() => {
                     if (query) return;
                     setPanelOpen((v) => !(v ?? hasSubagents));
                 }}
             >
-                <span className="hierarchy-header-toggle">{isOpen ? "▾" : "▸"}</span>
-                <span className="hierarchy-header-title">Agent Hierarchy</span>
-                <span className="hierarchy-header-count">{model.subagentMap.size} subagent{model.subagentMap.size !== 1 ? "s" : ""}</span>
+                <span className="hg-panel-toggle">{isOpen ? "▾" : "▸"}</span>
+                <span className="hg-panel-title">Agent Hierarchy</span>
+                <span className="hg-panel-count">{model.subagentMap.size} subagent{model.subagentMap.size !== 1 ? "s" : ""}</span>
             </button>
             {isOpen && (
-                <div className="hierarchy-body">
+                <div className="hg-graph">
                     <HierarchyCard
                         agentNode={hierarchy}
                         model={model}
