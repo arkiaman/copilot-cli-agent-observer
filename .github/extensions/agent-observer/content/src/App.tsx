@@ -106,11 +106,15 @@ function ResizeHandle({
     containerRef: React.RefObject<HTMLElement | null>;
     onResize: (pct: number) => void;
 }) {
+    const handleRef = useRef<HTMLDivElement | null>(null);
     const dragging = useRef(false);
 
     const onPointerDown = useCallback((e: React.PointerEvent) => {
         e.preventDefault();
         dragging.current = true;
+
+        const target = e.currentTarget as HTMLElement;
+        target.setPointerCapture(e.pointerId);
 
         const cursor = direction === "vertical" ? "row-resize" : "col-resize";
         document.body.style.cursor = cursor;
@@ -126,7 +130,6 @@ function ResizeHandle({
                 const offset = ev.clientY - rect.top;
                 if (total < MIN_PX * 2) return;
                 pct = clampPct((offset / total) * 100);
-                // enforce min-px
                 if (offset < MIN_PX) pct = clampPct((MIN_PX / total) * 100);
                 if (total - offset < MIN_PX) pct = clampPct(((total - MIN_PX) / total) * 100);
             } else {
@@ -140,16 +143,20 @@ function ResizeHandle({
             onResize(pct);
         };
 
-        const handleUp = () => {
+        const cleanup = () => {
             dragging.current = false;
             document.body.style.cursor = "";
             document.body.style.userSelect = "";
-            document.removeEventListener("pointermove", handleMove);
-            document.removeEventListener("pointerup", handleUp);
+            target.removeEventListener("pointermove", handleMove);
+            target.removeEventListener("pointerup", cleanup);
+            target.removeEventListener("pointercancel", cleanup);
+            target.removeEventListener("lostpointercapture", cleanup);
         };
 
-        document.addEventListener("pointermove", handleMove);
-        document.addEventListener("pointerup", handleUp);
+        target.addEventListener("pointermove", handleMove);
+        target.addEventListener("pointerup", cleanup);
+        target.addEventListener("pointercancel", cleanup);
+        target.addEventListener("lostpointercapture", cleanup);
     }, [direction, containerRef, onResize]);
 
     return (
@@ -347,11 +354,9 @@ export function App() {
         }
     }, [model, selection]);
 
-    // Auto-select root on first load so the details pane is immediately useful
-    const didAutoSelect = useRef(false);
+    // Auto-select root whenever selection is null so the details pane is never empty
     useEffect(() => {
-        if (model && !selection && !didAutoSelect.current) {
-            didAutoSelect.current = true;
+        if (model && !selection) {
             setSelection({ kind: "root", id: SYNTHETIC_ROOT_ID });
         }
     }, [model, selection]);

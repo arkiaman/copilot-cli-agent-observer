@@ -23310,10 +23310,13 @@ function ResizeHandle({
   containerRef,
   onResize
 }) {
+  const handleRef = (0, import_react4.useRef)(null);
   const dragging = (0, import_react4.useRef)(false);
   const onPointerDown = (0, import_react4.useCallback)((e) => {
     e.preventDefault();
     dragging.current = true;
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
     const cursor = direction === "vertical" ? "row-resize" : "col-resize";
     document.body.style.cursor = cursor;
     document.body.style.userSelect = "none";
@@ -23338,15 +23341,19 @@ function ResizeHandle({
       }
       onResize(pct);
     };
-    const handleUp = () => {
+    const cleanup = () => {
       dragging.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      document.removeEventListener("pointermove", handleMove);
-      document.removeEventListener("pointerup", handleUp);
+      target.removeEventListener("pointermove", handleMove);
+      target.removeEventListener("pointerup", cleanup);
+      target.removeEventListener("pointercancel", cleanup);
+      target.removeEventListener("lostpointercapture", cleanup);
     };
-    document.addEventListener("pointermove", handleMove);
-    document.addEventListener("pointerup", handleUp);
+    target.addEventListener("pointermove", handleMove);
+    target.addEventListener("pointerup", cleanup);
+    target.addEventListener("pointercancel", cleanup);
+    target.addEventListener("lostpointercapture", cleanup);
   }, [direction, containerRef, onResize]);
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
     "div",
@@ -23520,10 +23527,8 @@ function App() {
       setSelection(null);
     }
   }, [model, selection]);
-  const didAutoSelect = (0, import_react4.useRef)(false);
   (0, import_react4.useEffect)(() => {
-    if (model && !selection && !didAutoSelect.current) {
-      didAutoSelect.current = true;
+    if (model && !selection) {
       setSelection({ kind: "root", id: SYNTHETIC_ROOT_ID });
     }
   }, [model, selection]);
