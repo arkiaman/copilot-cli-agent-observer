@@ -178,6 +178,49 @@ main {
   overflow: hidden;
   background: linear-gradient(180deg, rgba(17, 17, 27, 0.42), transparent 24%);
 }
+/* ── Collapsible section headers ─────────────────────────────────────────── */
+.collapsible-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.section-toggle-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #a6adc8;
+  background: rgba(17, 17, 27, 0.5);
+  border: none;
+  border-bottom: 1px solid #313244;
+  cursor: pointer;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.section-toggle-header:hover {
+  background: rgba(17, 17, 27, 0.7);
+  color: #cdd6f4;
+}
+
+.section-toggle-icon {
+  font-size: 0.65rem;
+  color: #6c7086;
+  width: 0.8rem;
+  text-align: center;
+}
+
+.section-toggle-title { flex: 1; }
+
+.section-closed {
+  flex: 0 0 auto !important;
+}
+
 .panel-header {
   padding: 0.5rem 0.75rem;
   font-size: 0.75rem;

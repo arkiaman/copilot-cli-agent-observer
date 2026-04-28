@@ -9,6 +9,74 @@ import { ActivityWorkspace } from "./ActivityWorkspace.js";
 import { AgentHierarchyPanel } from "./AgentHierarchy.js";
 import { DetailPane } from "./DetailPane.js";
 
+/* ── Section layout persistence ─────────────────────────────────────────── */
+
+const LAYOUT_KEY = "agent-observer:section-layout";
+
+type SectionId = "hierarchy" | "activity" | "details";
+
+type SectionLayout = Record<SectionId, boolean>;
+
+const DEFAULT_LAYOUT: SectionLayout = { hierarchy: true, activity: true, details: true };
+
+function loadLayout(): SectionLayout {
+    try {
+        const raw = localStorage.getItem(LAYOUT_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            return { ...DEFAULT_LAYOUT, ...parsed };
+        }
+    } catch { /* ignore */ }
+    return { ...DEFAULT_LAYOUT };
+}
+
+function useSectionLayout() {
+    const [layout, setLayout] = useState<SectionLayout>(loadLayout);
+
+    const toggle = useCallback((id: SectionId) => {
+        setLayout((prev) => {
+            const next = { ...prev, [id]: !prev[id] };
+            try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+            return next;
+        });
+    }, []);
+
+    return { layout, toggle };
+}
+
+/* ── CollapsibleSection — reusable section with header toggle ──────────── */
+
+function CollapsibleSection({
+    id,
+    title,
+    open,
+    onToggle,
+    className,
+    children,
+}: {
+    id: SectionId;
+    title: string;
+    open: boolean;
+    onToggle: (id: SectionId) => void;
+    className?: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <section className={`collapsible-section ${className ?? ""} ${open ? "section-open" : "section-closed"}`}>
+            <button
+                type="button"
+                className="section-toggle-header"
+                onClick={() => onToggle(id)}
+                aria-expanded={open}
+            >
+                <span className="section-toggle-icon">{open ? "▾" : "▸"}</span>
+                <span className="section-toggle-title">{title}</span>
+            </button>
+            {open && children}
+        </section>
+    );
+}
+
 /* ── OverviewCards ──────────────────────────────────────────────────────── */
 
 function OverviewCards({ stats, subagents }: { stats: Stats; subagents: SubagentRecord[] }) {
@@ -144,6 +212,7 @@ export function App() {
     }, [model, selection]);
 
     const hasData = snapshot && snapshot.stats.ingestedEventCount > 0;
+    const { layout, toggle } = useSectionLayout();
 
     return (
         <>
@@ -177,7 +246,7 @@ export function App() {
                 <>
                     <OverviewCards stats={snapshot.stats} subagents={snapshot.subagents} />
 
-                    <section className="hierarchy-section">
+                    <CollapsibleSection id="hierarchy" title="Agent Hierarchy" open={layout.hierarchy} onToggle={toggle} className="hierarchy-section">
                         <AgentHierarchyPanel
                             model={model}
                             selection={selection}
@@ -185,17 +254,15 @@ export function App() {
                             filters={{ subagents: true, tools: true, messages: true, running: true, complete: true, failed: true, root: true }}
                             query=""
                         />
-                    </section>
+                    </CollapsibleSection>
 
                     <div className="panels">
-                        <section className="panel-list">
-                            <div className="panel-header">Background Activity</div>
+                        <CollapsibleSection id="activity" title="Background Activity" open={layout.activity} onToggle={toggle} className="panel-list">
                             <ActivityWorkspace model={model} selection={selection} onSelect={setSelection} />
-                        </section>
-                        <section className="panel-detail">
-                            <div className="panel-header">Subagent Details</div>
+                        </CollapsibleSection>
+                        <CollapsibleSection id="details" title="Subagent Details" open={layout.details} onToggle={toggle} className="panel-detail">
                             <DetailPane snapshot={snapshot} model={model} selection={selection} />
-                        </section>
+                        </CollapsibleSection>
                     </div>
                 </>
             )}

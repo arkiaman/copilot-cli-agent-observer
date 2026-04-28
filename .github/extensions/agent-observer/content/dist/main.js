@@ -23273,6 +23273,58 @@ function DetailPane({
 
 // src/App.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
+var LAYOUT_KEY = "agent-observer:section-layout";
+var DEFAULT_LAYOUT = { hierarchy: true, activity: true, details: true };
+function loadLayout() {
+  try {
+    const raw = localStorage.getItem(LAYOUT_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_LAYOUT, ...parsed };
+    }
+  } catch {
+  }
+  return { ...DEFAULT_LAYOUT };
+}
+function useSectionLayout() {
+  const [layout, setLayout] = (0, import_react4.useState)(loadLayout);
+  const toggle = (0, import_react4.useCallback)((id) => {
+    setLayout((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem(LAYOUT_KEY, JSON.stringify(next));
+      } catch {
+      }
+      return next;
+    });
+  }, []);
+  return { layout, toggle };
+}
+function CollapsibleSection({
+  id,
+  title,
+  open,
+  onToggle,
+  className,
+  children
+}) {
+  return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: `collapsible-section ${className ?? ""} ${open ? "section-open" : "section-closed"}`, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(
+      "button",
+      {
+        type: "button",
+        className: "section-toggle-header",
+        onClick: () => onToggle(id),
+        "aria-expanded": open,
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "section-toggle-icon", children: open ? "\u25BE" : "\u25B8" }),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "section-toggle-title", children: title })
+        ]
+      }
+    ),
+    open && children
+  ] });
+}
 function OverviewCards({ stats, subagents }) {
   const running = subagents.filter((subagent) => subagent.status === "started").length;
   const completed = subagents.filter((subagent) => subagent.status === "completed").length;
@@ -23396,6 +23448,7 @@ function App() {
     }
   }, [model, selection]);
   const hasData = snapshot && snapshot.stats.ingestedEventCount > 0;
+  const { layout, toggle } = useSectionLayout();
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("header", { children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h1", { children: "\u{1F52D} Agent Observer" }),
@@ -23429,7 +23482,7 @@ function App() {
     ] }) }),
     !error && snapshot && hasData && model && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(OverviewCards, { stats: snapshot.stats, subagents: snapshot.subagents }),
-      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("section", { className: "hierarchy-section", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "hierarchy", title: "Agent Hierarchy", open: layout.hierarchy, onToggle: toggle, className: "hierarchy-section", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
         AgentHierarchyPanel,
         {
           model,
@@ -23440,14 +23493,8 @@ function App() {
         }
       ) }),
       /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("div", { className: "panels", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "panel-list", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "panel-header", children: "Background Activity" }),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ActivityWorkspace, { model, selection, onSelect: setSelection })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("section", { className: "panel-detail", children: [
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("div", { className: "panel-header", children: "Subagent Details" }),
-          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(DetailPane, { snapshot, model, selection })
-        ] })
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "activity", title: "Background Activity", open: layout.activity, onToggle: toggle, className: "panel-list", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ActivityWorkspace, { model, selection, onSelect: setSelection }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(CollapsibleSection, { id: "details", title: "Subagent Details", open: layout.details, onToggle: toggle, className: "panel-detail", children: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(DetailPane, { snapshot, model, selection }) })
       ] })
     ] })
   ] });
