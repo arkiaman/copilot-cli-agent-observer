@@ -118,7 +118,6 @@ const session = await joinSession({
     ],
     commands: [
         { name: "agent-observer", ...openObserverCommand },
-        { name: "agentobserver", ...openObserverCommand },
         { name: "observer", ...openObserverCommand },
     ],
 });

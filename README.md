@@ -150,12 +150,11 @@ No window opens automatically. You choose when to look.
 Use a slash command in any Copilot CLI session:
 
 ```
-/agent-observer
-/agentobserver
 /observer
+/agent-observer
 ```
 
-`/agent-observer` remains the canonical name. `/agentobserver` and `/observer` are compatibility aliases for CLI builds that do not dispatch the hyphenated form reliably.
+`/observer` is the friendly primary command. `/agent-observer` remains available as a compatibility alias, but some CLI builds report an `Unknown command` error before still opening the window.
 
 Or ask the agent directly:
 
@@ -224,7 +223,7 @@ To validate a local checkout end to end:
 1. Copy `.github/extensions/agent-observer` into `~/.copilot/extensions/agent-observer`
 2. If a Copilot session is already open with experimental/extensions enabled, ask Copilot to reload extensions (`extensions_reload`). Otherwise start a clean session with `copilot --experimental`
 3. Run `/env` and confirm `agent-observer` appears under **Extensions**
-4. Run `/agent-observer` (or `/agentobserver` / `/observer`) to open the window
+4. Run `/observer` (or `/agent-observer`) to open the window
 
 ### Project structure
 
