@@ -23242,7 +23242,7 @@ function DetailPane({
 // src/App.tsx
 var import_jsx_runtime4 = __toESM(require_jsx_runtime(), 1);
 var LAYOUT_KEY = "agent-observer:section-layout";
-var DEFAULT_LAYOUT = { hierarchy: true, activity: true, details: true };
+var DEFAULT_LAYOUT = { hierarchy: false, activity: true, details: true };
 function loadLayout() {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY);

@@ -18,7 +18,7 @@ type SectionId = "hierarchy" | "activity" | "details";
 
 type SectionLayout = Record<SectionId, boolean>;
 
-const DEFAULT_LAYOUT: SectionLayout = { hierarchy: true, activity: true, details: true };
+const DEFAULT_LAYOUT: SectionLayout = { hierarchy: false, activity: true, details: true };
 
 function loadLayout(): SectionLayout {
     try {
