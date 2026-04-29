@@ -8,7 +8,7 @@
  *      - Replay via session.getMessages() populates the store.
  *      - Buffered live events merged (upsert handles dedupe).
  *      - Store switches to direct live ingestion.
- *   3. Tools expose normalized snapshot data.
+ *   3. Tools and commands expose normalized snapshot data.
  *
  * The webview content is a React + TypeScript app under content/, built with esbuild.
  * It is NOT auto-built — run `npm run build` inside content/ after editing TSX.
@@ -143,14 +143,16 @@ const observerDumpTool = {
     handler: async () => JSON.stringify(store.dumpSummary(), null, 2),
 };
 
+// ── Slash commands ───────────────────────────────────────────────────────────
+
+const openObserverHandler = async () => { await webview.show(); };
+
+const COMMANDS = [
+    { name: "agent-observer", description: "Open the agent observer webview window.", handler: openObserverHandler },
+    { name: "observer",       description: "Open the agent observer webview window.", handler: openObserverHandler },
+];
+
 // ── Join session ────────────────────────────────────────────────────────────
-// NOTE: Slash commands (/observer, /agent-observer) were removed because the
-// SDK feature they depend on (registerCommands) is absent in the universal
-// SDK bundle that many CLI builds resolve at runtime. The mismatch causes a
-// confusing "Unknown command" error even though the window opens via the
-// agent_observer_show tool. Tools work across all SDK versions, so the
-// recommended UX is: ask the agent "open the observer" or use the tool
-// directly.
 
 const session = await joinSession({
     hooks: {
@@ -169,7 +171,26 @@ const session = await joinSession({
         ...webview.tools,
         observerDumpTool,
     ],
+    commands: COMMANDS,
 });
+
+// ── Command handler safety net ──────────────────────────────────────────────
+// Some SDK versions silently skip registerCommands() inside joinSession(),
+// leaving the commandHandlers map empty while the host still dispatches
+// command.execute events. Force-register handlers post-joinSession to cover
+// that gap. If the SDK already registered them, this is a harmless overwrite.
+try {
+    if (typeof session.registerCommands === "function") {
+        session.registerCommands(COMMANDS);
+    } else if (session.commandHandlers instanceof Map) {
+        for (const cmd of COMMANDS) {
+            session.commandHandlers.set(cmd.name, cmd.handler);
+        }
+    }
+} catch (e) {
+    // Diagnostic: log if safety net fails — tools still work as fallback
+    console.error("agent-observer: command safety-net failed:", e?.message ?? e);
+}
 
 // Attach immediately to the current foreground session as soon as the extension
 // loads. `onSessionStart` covers later transitions, but existing sessions need an

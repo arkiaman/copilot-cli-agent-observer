@@ -78,8 +78,8 @@ Those scripts download this repo, copy `.github/extensions/agent-observer` into 
 
 After install, load the extension:
 
-- **Already in Copilot CLI with experimental/extensions enabled?** Ask Copilot to reload extensions (`extensions_reload`), then ask it to "open the agent observer".
-- **Starting fresh?** Run `copilot --experimental`, then `/env` to confirm, and ask the agent to open the observer.
+- **Already in Copilot CLI with experimental/extensions enabled?** Ask Copilot to reload extensions (`extensions_reload`), then run `/observer`.
+- **Starting fresh?** Run `copilot --experimental`, then `/env` to confirm and `/observer` to launch.
 
 If Copilot CLI is already running without experimental/extensions enabled, start a new session with `copilot --experimental`.
 
@@ -144,7 +144,7 @@ When Copilot CLI starts a session with Agent Observer available as a user or pro
 
 1. **Bootstrap** — extension checks for `node_modules/` and installs dependencies if needed (first run only, takes a few seconds). When `package-lock.json` is present it uses deterministic `npm ci --omit=dev --no-audit --no-fund`.
 2. **Session attach** — the observer wires into the active session's event stream, capturing all agent and tool activity
-3. **Ready** — tools are registered; the observer is silently collecting data in the background
+3. **Ready** — tools and commands are registered; the observer is silently collecting data in the background
 
 No window opens automatically. You choose when to look.
 
@@ -152,15 +152,21 @@ No window opens automatically. You choose when to look.
 
 ### Open the observer window
 
-Ask the agent directly in any Copilot CLI session:
+Use a slash command in any Copilot CLI session:
+
+```
+/observer
+```
+
+`/observer` is the primary command. `/agent-observer` is also available as an alias.
+
+You can also ask the agent directly:
 
 > "Open the agent observer"
 
-The agent will call the `agent_observer_show` tool to open the window. For a deterministic approach, you can also ask:
+The agent has access to the `agent_observer_show` tool, so natural-language requests work too.
 
-> "Use the `agent_observer_show` tool to open the observer window"
-
-> **Note:** Slash commands (`/observer`, `/agent-observer`) were removed because the underlying SDK feature is absent in some CLI builds, causing a confusing "Unknown command" error even though the window still opened via the tool fallback. The tool-based approach is fully equivalent and more reliable.
+> **Note:** On some CLI builds, `/observer` may briefly show an "Unknown command" error before the window opens. This is a known SDK version mismatch — the window still opens via tool fallback. If you see this, the natural-language approach is the most reliable alternative.
 
 ### Available tools
 
@@ -231,14 +237,14 @@ To validate a local checkout end to end:
 1. Copy `.github/extensions/agent-observer` into `~/.copilot/extensions/agent-observer`
 2. If a Copilot session is already open with experimental/extensions enabled, ask Copilot to reload extensions (`extensions_reload`). Otherwise start a clean session with `copilot --experimental`
 3. Run `/env` and confirm `agent-observer` appears under **Extensions**
-4. Ask the agent to open the observer (e.g., "open the agent observer")
+4. Run `/observer` (or `/agent-observer`) to open the window
 
 ### Project structure
 
 ```
 .github/extensions/agent-observer/
 ├── extension.mjs          # Bootstrap entry (npm install if needed, then loads main)
-├── main.mjs               # Extension logic: session identity, wiring, tools
+├── main.mjs               # Extension logic: session identity, wiring, tools, commands
 ├── package.json           # Runtime deps (@webviewjs/webview, ws)
 ├── lib/
 │   ├── copilot-webview.js  # Reusable webview host (HTTP server + WebSocket bridge)

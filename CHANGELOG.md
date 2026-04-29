@@ -24,7 +24,7 @@ This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 
 ### Fixed
 
-- **"Unknown command" error on `/observer`** — removed slash commands (`/observer`, `/agent-observer`) that relied on an SDK feature (`registerCommands`) absent in the universal SDK bundle used by many CLI builds; the window now opens exclusively via the `agent_observer_show` tool, which works across all CLI versions
+- **"Unknown command" error on `/observer`** — added post-joinSession safety net that force-registers command handlers to cover SDK versions where `registerCommands()` is silently skipped; the slash commands (`/observer`, `/agent-observer`) are restored and the window now opens more reliably
 - **DetailPane crash** — added optional chaining on `toolRequestCount?.toString()` to prevent crash when selecting messages from the timeline
 - **Resize handle reliability** — added pointer capture for consistent drag behavior across elements
 - **Root auto-selection** — always falls back to root session when no selection exists, rather than using a one-shot guard
@@ -42,6 +42,7 @@ First public alpha release — read-only observability for GitHub Copilot CLI ag
 - **Native desktop window** — powered by `@webviewjs/webview` (not a browser tab)
 - **Auto-connect** — wires into the active Copilot CLI session event stream automatically
 - **Self-bootstrap** — installs dependencies on first load, preferring deterministic `npm ci`
+- **Slash command** — `/observer` (primary) and `/agent-observer` (alias) to open the dashboard window
 - **Tools** — `agent_observer_show`, `agent_observer_close`, `observer_dump_summary`
 
 ### Fixed
