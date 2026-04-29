@@ -24,7 +24,7 @@ This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 
 ### Fixed
 
-- **"Unknown command" error on `/observer`** — added post-joinSession safety net that force-registers command handlers to cover SDK versions where `registerCommands()` is silently skipped; the slash commands (`/observer`, `/agent-observer`) are restored and the window now opens more reliably
+- **"Unknown command" error on `/observer`** — replaced the ineffective post-joinSession safety net with a dispatcher fallback that intercepts `_executeCommandAndRespond` and injects our handler into the map just before lookup; this fixes the bug even when something else clears the command handler map after registration
 - **DetailPane crash** — added optional chaining on `toolRequestCount?.toString()` to prevent crash when selecting messages from the timeline
 - **Resize handle reliability** — added pointer capture for consistent drag behavior across elements
 - **Root auto-selection** — always falls back to root session when no selection exists, rather than using a one-shot guard

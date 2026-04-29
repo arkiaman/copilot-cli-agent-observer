@@ -166,8 +166,6 @@ You can also ask the agent directly:
 
 The agent has access to the `agent_observer_show` tool, so natural-language requests work too.
 
-> **Note:** On some CLI builds, `/observer` may briefly show an "Unknown command" error before the window opens. This is a known SDK version mismatch — the window still opens via tool fallback. If you see this, the natural-language approach is the most reliable alternative.
-
 ### Available tools
 
 | Tool | Description |

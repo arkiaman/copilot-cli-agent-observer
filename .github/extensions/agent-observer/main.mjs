@@ -174,22 +174,30 @@ const session = await joinSession({
     commands: COMMANDS,
 });
 
-// ── Command handler safety net ──────────────────────────────────────────────
-// Some SDK versions silently skip registerCommands() inside joinSession(),
-// leaving the commandHandlers map empty while the host still dispatches
-// command.execute events. Force-register handlers post-joinSession to cover
-// that gap. If the SDK already registered them, this is a harmless overwrite.
+// ── Command dispatcher fallback ─────────────────────────────────────────────
+// The SDK's _executeCommandAndRespond looks up commandHandlers.get(name).
+// On some builds, the handler map is cleared after joinSession (e.g. by a
+// subsequent resumeSession or internal re-registration with commands=undefined).
+// Rather than fight to keep the map populated, we intercept the dispatcher
+// itself: if the command is one of ours, inject the handler into the map just
+// before the original method runs. This guarantees our commands always resolve.
+const OBSERVER_COMMAND_NAMES = new Set(COMMANDS.map(c => c.name));
+const OBSERVER_HANDLERS = new Map(COMMANDS.map(c => [c.name, c.handler]));
 try {
-    if (typeof session.registerCommands === "function") {
-        session.registerCommands(COMMANDS);
-    } else if (session.commandHandlers instanceof Map) {
-        for (const cmd of COMMANDS) {
-            session.commandHandlers.set(cmd.name, cmd.handler);
-        }
+    if (typeof session._executeCommandAndRespond === "function") {
+        const originalDispatch = session._executeCommandAndRespond.bind(session);
+        session._executeCommandAndRespond = async function (requestId, commandName, command, args) {
+            if (OBSERVER_COMMAND_NAMES.has(commandName) && session.commandHandlers instanceof Map) {
+                session.commandHandlers.set(commandName, OBSERVER_HANDLERS.get(commandName));
+            }
+            return originalDispatch(requestId, commandName, command, args);
+        };
     }
 } catch (e) {
-    // Diagnostic: log if safety net fails — tools still work as fallback
-    console.error("agent-observer: command safety-net failed:", e?.message ?? e);
+    // Non-fatal: tools still work as fallback if patching fails
+    if (process.env.AGENT_OBSERVER_DEV) {
+        console.error("agent-observer: dispatcher fallback patch failed:", e?.message ?? e);
+    }
 }
 
 // Attach immediately to the current foreground session as soon as the extension
