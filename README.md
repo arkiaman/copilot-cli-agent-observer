@@ -172,7 +172,7 @@ The agent has access to the `agent_observer_show` tool, so natural-language requ
 |---|---|
 | `agent_observer_show` | Open the observer window (or bring it to front) |
 | `agent_observer_close` | Close the observer window |
-| `observer_dump_summary` | Return a structured JSON summary of all captured events (useful in agent conversations) |
+| `observer_dump_summary` | Return a structured JSON summary of all captured events, extension version, and command diagnostics (useful for debugging and in agent conversations) |
 
 `agent_observer_eval` is **not exposed in normal installs**. For local development/debugging only, set `AGENT_OBSERVER_DEV=1` before starting Copilot CLI. That same flag also enables Agent Observer startup diagnostic logs.
 
@@ -263,6 +263,37 @@ To validate a local checkout end to end:
     ├── dist/main.js        # Built bundle (committed)
     └── package.json        # UI build deps (react, esbuild)
 ```
+
+---
+
+## Troubleshooting
+
+### `/observer` shows "Unknown command: observer"
+
+This is a known SDK-level timing issue where the command handler map loses entries after registration. The extension includes patches that work around this for most setups. If you see the error:
+
+1. **Check your version** — ask the agent to run `observer_dump_summary`. Look for `"version": "1.2.0"` or later. If you see an older version (or no `version` field), reinstall:
+   ```powershell
+   irm https://raw.githubusercontent.com/Rogn/copilot-cli-agent-observer/master/install.ps1 | iex
+   ```
+
+2. **Use the tool instead** — ask the agent to "open the agent observer" or call `agent_observer_show` directly. The tool always works, even when the slash command doesn't.
+
+3. **Collect diagnostics** — if the error persists on v1.2.0+, ask the agent to run `observer_dump_summary` and share the `diagnostics` and `live` sections. Key signals:
+   - `live.mapIsOriginal: false` → the SDK replaced the internal map after patching
+   - `live.getIsPatched: false` → the patched `.get()` was overwritten
+   - `mapGetCalls` showing `"/observer"` → command names arrive with a leading slash (normalization should handle this, but useful to confirm)
+
+### The window opens but `/observer` still errors
+
+This is expected behavior in some cases — the error is cosmetic. The slash command dispatch and the tool dispatch are separate paths. Even when the slash command errors, the window may have already opened via the tool path. You can safely ignore the error message and use the observer normally.
+
+### `/observer` doesn't appear in the command list
+
+Verify the extension loaded correctly:
+1. Run `/env` in Copilot CLI — `agent-observer` should appear under **Extensions**
+2. If not, ensure experimental mode is enabled (`/experimental on` or `copilot --experimental`)
+3. If the extension is listed but the command isn't, ask the agent to reload extensions (`extensions_reload`)
 
 ---
 

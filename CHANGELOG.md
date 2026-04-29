@@ -9,6 +9,8 @@ This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 ### Added
 
 - **Session identity** — each observer window now shows the working directory, git branch, and process ID in the native window title, browser title, and a blue header badge; multiple observer windows from parallel sessions are instantly distinguishable
+- **Version marker** — `observer_dump_summary` now reports extension version (e.g. `"version": "1.2.0"`) so users and developers can confirm which code is actually running
+- **Command diagnostics** — `observer_dump_summary` includes live identity checks (was the patched map/get/dispatch replaced at runtime?) and a ring buffer of the last 20 command dispatch calls for debugging slash command issues
 - **Agent hierarchy graph** — visual graph with connector lines showing main agent → subagent relationships, status badges, descendant counts, and timing
 - **Drag-to-resize panels** — VS Code-style handles between Agent Hierarchy, Background Activity, and Subagent Details sections; sizes saved as percentages in localStorage
 - **Collapsible sections** — expand/collapse each panel with persistent state in localStorage; Agent Hierarchy starts collapsed by default
@@ -24,7 +26,7 @@ This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 
 ### Fixed
 
-- **"Unknown command" error on `/observer`** — replaced the ineffective post-joinSession safety net with a dispatcher fallback that intercepts `_executeCommandAndRespond` and injects our handler into the map just before lookup; this fixes the bug even when something else clears the command handler map after registration
+- **"Unknown command" error on `/observer`** — patched `Map.get()` on the SDK's internal `commandHandlers` map so our handler is always returned for `/observer` and `/agent-observer`, even when the SDK clears the map after registration; secondary belt-and-suspenders patch on `_executeCommandAndRespond` injects the handler just before lookup; both patches normalize command names (strip leading `/`) to handle dispatch inconsistencies
 - **DetailPane crash** — added optional chaining on `toolRequestCount?.toString()` to prevent crash when selecting messages from the timeline
 - **Resize handle reliability** — added pointer capture for consistent drag behavior across elements
 - **Root auto-selection** — always falls back to root session when no selection exists, rather than using a one-shot guard
