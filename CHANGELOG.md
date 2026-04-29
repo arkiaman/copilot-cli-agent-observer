@@ -4,6 +4,29 @@ All notable changes to Copilot CLI Agent Observer are documented here.
 
 This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 
+## [Unreleased]
+
+### Added
+
+- **Agent hierarchy graph** — visual graph with connector lines showing main agent → subagent relationships, status badges, descendant counts, and timing
+- **Drag-to-resize panels** — VS Code-style handles between Agent Hierarchy, Background Activity, and Subagent Details sections; sizes saved as percentages in localStorage
+- **Collapsible sections** — expand/collapse each panel with persistent state in localStorage; Agent Hierarchy starts collapsed by default
+- **Zero-subagent usability** — the dashboard is useful immediately from session start, even before any subagents spawn; auto-selects root session, shows root-level tool calls and messages
+- **Activity workspace** — unified activity panel with tree view, chronological timeline, search, and type/status filters
+- **Detail pane sections** — Arguments and Result Preview disclosure sections for tool calls, Content and Reasoning sections for messages
+
+### Changed
+
+- **UI architecture** — split monolithic `main.tsx` into focused modules: `App.tsx` (layout), `AgentHierarchy.tsx`, `ActivityWorkspace.tsx`, `DetailPane.tsx`, `model.ts`, `helpers.ts`, `types.ts`
+- **Background Activity label** — renamed from "Background Subagents" to clarify it includes all background activity, not just subagents
+- **Screenshots and GIF** — recaptured at 1920×1080 with rich mock data showing realistic security audit scenario
+
+### Fixed
+
+- **DetailPane crash** — added optional chaining on `toolRequestCount?.toString()` to prevent crash when selecting messages from the timeline
+- **Resize handle reliability** — added pointer capture for consistent drag behavior across elements
+- **Root auto-selection** — always falls back to root session when no selection exists, rather than using a one-shot guard
+
 ## [0.1.0-alpha] — 2026-04-27
 
 First public alpha release — read-only observability for GitHub Copilot CLI agent sessions.

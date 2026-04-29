@@ -28,13 +28,17 @@ This project started as a response to [github/copilot-cli#1322](https://github.c
 This is an **alpha release** focused on **read-only observability**:
 
 - ✅ Live execution tree showing main agent → subagents → tool calls
-- ✅ Chronological activity timeline with tool badges and agent labels
-- ✅ Detail inspection pane (arguments, results, timing)
-- ✅ Stats cards (agent count, tool call count, message count)
+- ✅ Agent hierarchy graph with connector lines and status badges
+- ✅ Chronological activity timeline with tool badges, agent labels, and result previews
+- ✅ Detail inspection pane (arguments, results, timing, lineage)
+- ✅ Stats cards (agent count, tool call count, message count, events ingested)
+- ✅ Drag-to-resize panels — VS Code-style handles between sections, sizes saved to localStorage
+- ✅ Collapsible sections with persistent expand/collapse state
+- ✅ Works without subagents — useful from the moment a session starts, even before agents spawn
 - ✅ Native desktop window (not a browser tab — a real OS window)
 - ✅ Auto-connects to the active Copilot CLI session
 - ❌ No write operations (cannot modify agent behavior)
-- ❌ No persistent storage or export (live session only)
+- ❌ No session history export (live session only; UI layout preferences persist locally)
 
 ---
 
@@ -174,15 +178,21 @@ The agent has access to the `agent_observer_show` tool, so natural-language requ
 
 ### Reading the dashboard
 
+**Agent Hierarchy** — collapsible graph showing the main agent with connector lines to each subagent. Click any node to see its details. Starts collapsed by default; expand it when you want the big picture.
+
 **Execution tree** — hierarchical view showing Root Session → Subagents → Tool Calls / Messages. Expand any node to drill into its children.
 
 ![Timeline feed — chronological activity with tool badges and agent labels](docs/images/timeline-feed.png)
 
-**Activity timeline** — chronological feed of all events with tool-type badges, agent attribution, and result previews.
+**Activity timeline** — chronological feed of all events with tool-type badges, agent attribution, and result previews. Switch between tree and timeline views, search by keyword, and filter by event type or status.
 
 **Detail pane** — click any node or timeline row to inspect full arguments, results, timestamps, and agent context.
 
-![Detail inspection — drill into a Code Review Agent with full context](docs/images/detail-inspection.png)
+![Detail inspection — drill into a grep tool call with arguments and result preview](docs/images/detail-inspection.png)
+
+**Resizable sections** — drag the handles between panels to resize them. Sizes are saved to localStorage and restored on reload.
+
+The dashboard works from the moment your session starts — even before any subagents spawn. Stats cards, the timeline, and the detail pane all show root-level activity immediately.
 
 ### Demo walkthrough
 
@@ -238,7 +248,15 @@ To validate a local checkout end to end:
 │   ├── event-store.js      # Event store with buffered startup merge
 │   └── webview-child.mjs   # Native window child process
 └── content/
-    ├── src/main.tsx        # React dashboard source
+    ├── src/
+    │   ├── main.tsx            # React entry point
+    │   ├── App.tsx             # Root layout, resize handles, section orchestration
+    │   ├── AgentHierarchy.tsx  # Agent hierarchy graph with connector lines
+    │   ├── ActivityWorkspace.tsx# Activity tree / timeline with filters
+    │   ├── DetailPane.tsx      # Detail inspection pane (subagent, tool, message)
+    │   ├── model.ts            # Client-side data model and derived views
+    │   ├── helpers.ts          # Shared utilities (formatting, text, status)
+    │   └── types.ts            # TypeScript type definitions
     ├── style.css           # Dashboard styles
     ├── dist/main.js        # Built bundle (committed)
     └── package.json        # UI build deps (react, esbuild)
