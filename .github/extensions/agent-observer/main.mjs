@@ -237,17 +237,16 @@ try {
         // PRIMARY FIX: Patch the Map's .get() method directly
         const nativeGet = Map.prototype.get;
         const patchedGet = function (key) {
-            const activeMap = this instanceof Map ? this : cmdMap;
-            // Record call for diagnostics (keep last 20)
-            if (_diag.mapGetCalls.length < 20) {
-                _diag.mapGetCalls.push({ key, ts: Date.now(), mapSize: activeMap.size });
-            }
+            // Ring buffer: keep last 20 calls (shift oldest when full)
+            _diag.mapGetCalls.push({ key, ts: Date.now() });
+            if (_diag.mapGetCalls.length > 20) _diag.mapGetCalls.shift();
             // Check both raw and normalized (handles "/observer" → "observer")
             const norm = normalizeCmd(key);
             if (OBSERVER_COMMAND_NAMES.has(key) || OBSERVER_COMMAND_NAMES.has(norm)) {
                 return OBSERVER_HANDLERS.get(norm);
             }
-            return nativeGet.call(activeMap, key);
+            // For non-observer keys, preserve native Map#get semantics exactly
+            return nativeGet.call(this, key);
         };
         cmdMap.get = patchedGet;
         _diag.mapGetPatched = true;
@@ -261,9 +260,8 @@ try {
         const patchedDispatch = async function (requestId, commandName, command, args) {
             const norm = normalizeCmd(commandName);
             // Record call for diagnostics
-            if (_diag.dispatchCalls.length < 20) {
-                _diag.dispatchCalls.push({ commandName, norm, requestId, ts: Date.now() });
-            }
+            _diag.dispatchCalls.push({ commandName, norm, requestId, ts: Date.now() });
+            if (_diag.dispatchCalls.length > 20) _diag.dispatchCalls.shift();
             if ((OBSERVER_COMMAND_NAMES.has(commandName) || OBSERVER_COMMAND_NAMES.has(norm))
                 && this?.commandHandlers instanceof Map) {
                 this.commandHandlers.set(commandName, OBSERVER_HANDLERS.get(norm));
