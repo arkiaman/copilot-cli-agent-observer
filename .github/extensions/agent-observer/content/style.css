@@ -1166,7 +1166,7 @@ main {
 .hierarchy-children { display: none; }
 
 /* ── Responsive tweaks ───────────────────────────────────────────────────── */
-@media (max-width: 1200px) {
+@media (max-width: 900px) {
   .panels {
     flex-direction: column;
   }

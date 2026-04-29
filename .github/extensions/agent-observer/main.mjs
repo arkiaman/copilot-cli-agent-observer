@@ -120,8 +120,8 @@ const webview = new CopilotWebview({
     extensionName: "agent_observer",
     contentDir: join(import.meta.dirname, "content"),
     title: `Agent Observer — ${sessionMeta.label}`,
-    width: 1100,
-    height: 750,
+    width: 1400,
+    height: 820,
     enableEvalTool: isDevMode,
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
