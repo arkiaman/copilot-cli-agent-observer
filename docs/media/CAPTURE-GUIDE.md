@@ -9,7 +9,7 @@ native OS window, not a browser tab.
 
 1. Open a Copilot CLI session with the Agent Observer extension loaded.
 2. Start a multi-agent task (e.g., ask Copilot to analyze a repo).
-3. Run `/agent-observer` to open the observer window.
+3. Ask the agent to "open the agent observer" (uses the `agent_observer_show` tool).
 4. Start your screen recorder on the observer window.
 5. Record 15–20 seconds showing:
    - Stats cards populating

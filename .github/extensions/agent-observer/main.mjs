@@ -8,7 +8,7 @@
  *      - Replay via session.getMessages() populates the store.
  *      - Buffered live events merged (upsert handles dedupe).
  *      - Store switches to direct live ingestion.
- *   3. Tools and commands expose normalized snapshot data.
+ *   3. Tools expose normalized snapshot data.
  *
  * The webview content is a React + TypeScript app under content/, built with esbuild.
  * It is NOT auto-built — run `npm run build` inside content/ after editing TSX.
@@ -143,12 +143,14 @@ const observerDumpTool = {
     handler: async () => JSON.stringify(store.dumpSummary(), null, 2),
 };
 
-const openObserverCommand = {
-    description: "Open the agent observer webview window.",
-    handler: async () => { await webview.show(); },
-};
-
 // ── Join session ────────────────────────────────────────────────────────────
+// NOTE: Slash commands (/observer, /agent-observer) were removed because the
+// SDK feature they depend on (registerCommands) is absent in the universal
+// SDK bundle that many CLI builds resolve at runtime. The mismatch causes a
+// confusing "Unknown command" error even though the window opens via the
+// agent_observer_show tool. Tools work across all SDK versions, so the
+// recommended UX is: ask the agent "open the observer" or use the tool
+// directly.
 
 const session = await joinSession({
     hooks: {
@@ -166,10 +168,6 @@ const session = await joinSession({
     tools: [
         ...webview.tools,
         observerDumpTool,
-    ],
-    commands: [
-        { name: "agent-observer", ...openObserverCommand },
-        { name: "observer", ...openObserverCommand },
     ],
 });
 

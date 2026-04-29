@@ -24,6 +24,7 @@ This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 
 ### Fixed
 
+- **"Unknown command" error on `/observer`** — removed slash commands (`/observer`, `/agent-observer`) that relied on an SDK feature (`registerCommands`) absent in the universal SDK bundle used by many CLI builds; the window now opens exclusively via the `agent_observer_show` tool, which works across all CLI versions
 - **DetailPane crash** — added optional chaining on `toolRequestCount?.toString()` to prevent crash when selecting messages from the timeline
 - **Resize handle reliability** — added pointer capture for consistent drag behavior across elements
 - **Root auto-selection** — always falls back to root session when no selection exists, rather than using a one-shot guard
@@ -41,7 +42,6 @@ First public alpha release — read-only observability for GitHub Copilot CLI ag
 - **Native desktop window** — powered by `@webviewjs/webview` (not a browser tab)
 - **Auto-connect** — wires into the active Copilot CLI session event stream automatically
 - **Self-bootstrap** — installs dependencies on first load, preferring deterministic `npm ci`
-- **Slash command** — `/agent-observer` to open the dashboard window
 - **Tools** — `agent_observer_show`, `agent_observer_close`, `observer_dump_summary`
 
 ### Fixed
@@ -50,7 +50,7 @@ First public alpha release — read-only observability for GitHub Copilot CLI ag
 - **Missing slash command diagnosis** — clarify that `copilot plugin install ...` does not activate bundled `.github/extensions`, which is why `/agent-observer` may be missing after plugin-style installation
 - **One-command install path** — add `install.ps1` and `install.sh` so users can install the extension without manual folder copying
 - **No-restart reload path** — document using Copilot's `extensions_reload` tool from an existing experimental/extensions-enabled session after installing or updating the extension
-- **Observer command alias** — add `/observer` as the friendly primary command while keeping `/agent-observer` available for compatibility
+- **Observer command alias** — `/observer` alias was added and later removed along with all slash commands; use the `agent_observer_show` tool instead
 
 ### Changed
 
