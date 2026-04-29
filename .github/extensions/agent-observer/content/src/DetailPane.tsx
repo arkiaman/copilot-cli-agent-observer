@@ -202,8 +202,8 @@ export function DetailPane({
             <div className="detail-content">
                 <DetailHero
                     kicker="Background Tasks"
-                    title="🧭 Root session"
-                    subtitle="Foreground session + orphan activity"
+                    title={`🧭 ${rootNode?.title || "Root session"}`}
+                    subtitle={rootNode?.subtitle || "Foreground session + orphan activity"}
                     pills={[
                         { label: "Status: Active", className: "summary-chip" },
                         { label: pluralize(rootNode?.childKeys.length ?? 0, "top-level branch"), className: "summary-chip" },
@@ -215,7 +215,7 @@ export function DetailPane({
                     ["Status", "Active"],
                     ["ID", "root"],
                     ["Type", "root"],
-                    ["Desc", "Foreground session + orphan activity"],
+                    ["Desc", rootNode?.subtitle || "Foreground session + orphan activity"],
                     ["Model", UNAVAILABLE_FROM_EVENT_STREAM],
                     ["Prompt", UNAVAILABLE_FROM_EVENT_STREAM],
                 ]} />

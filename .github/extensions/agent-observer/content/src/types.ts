@@ -72,6 +72,16 @@ export interface ExecutionGraphSnapshot {
     hiddenToolCallIds?: string[];
 }
 
+export interface SessionMeta {
+    label: string;
+    cwdName: string;
+    cwdPath: string;
+    branch: string | null;
+    pid: number;
+    startedAt: string;
+    workspacePath: string | null;
+}
+
 export interface Snapshot {
     subagents: SubagentRecord[];
     toolCalls: ToolCallRecord[];
@@ -81,6 +91,7 @@ export interface Snapshot {
     recentEvents: { ts: string; type: string; summary: string }[];
     timeline: TimelineRef[];
     stats: Stats;
+    sessionMeta?: SessionMeta;
 }
 
 export interface FatalBoundaryState {

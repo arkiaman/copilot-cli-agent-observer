@@ -96,6 +96,13 @@ header .badge {
   color: #a6adc8;
 }
 
+header .session-badge {
+  background: #1e3a5f;
+  color: #89b4fa;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 /* ── Error bar ───────────────────────────────────────────────────────────── */
 .error-bar {
   padding: 0.5rem 1rem;

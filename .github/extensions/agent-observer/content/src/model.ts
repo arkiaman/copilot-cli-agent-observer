@@ -171,7 +171,7 @@ export function buildFallbackExecutionGraph(snapshot: Snapshot): ExecutionGraphS
 /* ── Node query helpers ─────────────────────────────────────────────────── */
 
 export function getNodeTitleByKey(nodesByKey: Map<string, ExecutionNode>, key: string | null | undefined): string {
-    if (!key) return "Root session";
+    if (!key) return nodesByKey.get("root:__root__")?.title || "Root session";
     return nodesByKey.get(key)?.title || shortId(parseNodeKey(key).id);
 }
 
@@ -223,7 +223,7 @@ export function getNodeTypeLabel(model: ActivityModel, node: ExecutionNode): str
 }
 
 export function getNodeDescription(model: ActivityModel, node: ExecutionNode): string {
-    if (node.kind === "root") return "Foreground session + orphan activity";
+    if (node.kind === "root") return node.subtitle || "Foreground session + orphan activity";
     if (node.kind === "subagent") {
         const record = model.subagentMap.get(node.id);
         return record?.agentDescription || node.subtitle || UNAVAILABLE_FROM_EVENT_STREAM;
@@ -308,7 +308,8 @@ function resolveOwnerFromPath(
             return { ownerId: node.id, ownerLabel: node.title };
         }
     }
-    return { ownerId: SYNTHETIC_ROOT_ID, ownerLabel: "Root session" };
+    const rootNode = nodesByKey.get("root:__root__");
+    return { ownerId: SYNTHETIC_ROOT_ID, ownerLabel: rootNode?.title || "Root session" };
 }
 
 export function buildActivityModel(snapshot: Snapshot): ActivityModel {
@@ -339,6 +340,12 @@ export function buildActivityModel(snapshot: Snapshot): ActivityModel {
     const orphanKeys = new Set(graph.orphanNodeKeys ?? []);
     const nodesByKey = new Map<string, ExecutionNode>();
 
+    const meta = snapshot.sessionMeta;
+    const rootTitle = meta?.label || "Root session";
+    const rootSubtitle = meta
+        ? `pid ${meta.pid} · foreground session + orphan activity`
+        : "Foreground session + orphan activity";
+
     nodesByKey.set(rootNodeKey, {
         key: rootNodeKey,
         kind: "root",
@@ -347,9 +354,9 @@ export function buildActivityModel(snapshot: Snapshot): ActivityModel {
         status: "complete",
         icon: "🧭",
         kindLabel: "root",
-        title: "Root session",
-        subtitle: "Foreground session + orphan activity",
-        searchText: "root session orphan foreground",
+        title: rootTitle,
+        subtitle: rootSubtitle,
+        searchText: `root session orphan foreground ${meta?.cwdName ?? ""} ${meta?.branch ?? ""}`.toLowerCase(),
         parentKey: null,
         childKeys: graph.childNodeKeys[rootNodeKey] ?? [],
         pathKeys: graph.pathNodeKeys[rootNodeKey] ?? [rootNodeKey],

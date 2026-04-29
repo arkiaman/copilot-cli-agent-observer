@@ -22043,7 +22043,7 @@ function buildFallbackExecutionGraph(snapshot) {
   };
 }
 function getNodeTitleByKey(nodesByKey, key) {
-  if (!key) return "Root session";
+  if (!key) return nodesByKey.get("root:__root__")?.title || "Root session";
   return nodesByKey.get(key)?.title || shortId(parseNodeKey(key).id);
 }
 function inferDurationMsForNode(model, node) {
@@ -22090,7 +22090,7 @@ function getNodeTypeLabel(model, node) {
   return "assistant.message";
 }
 function getNodeDescription(model, node) {
-  if (node.kind === "root") return "Foreground session + orphan activity";
+  if (node.kind === "root") return node.subtitle || "Foreground session + orphan activity";
   if (node.kind === "subagent") {
     const record2 = model.subagentMap.get(node.id);
     return record2?.agentDescription || node.subtitle || UNAVAILABLE_FROM_EVENT_STREAM;
@@ -22155,7 +22155,8 @@ function resolveOwnerFromPath(nodesByKey, pathKeys) {
       return { ownerId: node.id, ownerLabel: node.title };
     }
   }
-  return { ownerId: SYNTHETIC_ROOT_ID, ownerLabel: "Root session" };
+  const rootNode = nodesByKey.get("root:__root__");
+  return { ownerId: SYNTHETIC_ROOT_ID, ownerLabel: rootNode?.title || "Root session" };
 }
 function buildActivityModel(snapshot) {
   const subagentMap = new Map(snapshot.subagents.map((record) => [record.id, record]));
@@ -22183,6 +22184,9 @@ function buildActivityModel(snapshot) {
   const hiddenToolCallIds = new Set(graph.hiddenToolCallIds ?? []);
   const orphanKeys = new Set(graph.orphanNodeKeys ?? []);
   const nodesByKey = /* @__PURE__ */ new Map();
+  const meta = snapshot.sessionMeta;
+  const rootTitle = meta?.label || "Root session";
+  const rootSubtitle = meta ? `pid ${meta.pid} \xB7 foreground session + orphan activity` : "Foreground session + orphan activity";
   nodesByKey.set(rootNodeKey, {
     key: rootNodeKey,
     kind: "root",
@@ -22191,9 +22195,9 @@ function buildActivityModel(snapshot) {
     status: "complete",
     icon: "\u{1F9ED}",
     kindLabel: "root",
-    title: "Root session",
-    subtitle: "Foreground session + orphan activity",
-    searchText: "root session orphan foreground",
+    title: rootTitle,
+    subtitle: rootSubtitle,
+    searchText: `root session orphan foreground ${meta?.cwdName ?? ""} ${meta?.branch ?? ""}`.toLowerCase(),
     parentKey: null,
     childKeys: graph.childNodeKeys[rootNodeKey] ?? [],
     pathKeys: graph.pathNodeKeys[rootNodeKey] ?? [rootNodeKey],
@@ -23023,8 +23027,8 @@ function DetailPane({
         DetailHero,
         {
           kicker: "Background Tasks",
-          title: "\u{1F9ED} Root session",
-          subtitle: "Foreground session + orphan activity",
+          title: `\u{1F9ED} ${rootNode?.title || "Root session"}`,
+          subtitle: rootNode?.subtitle || "Foreground session + orphan activity",
           pills: [
             { label: "Status: Active", className: "summary-chip" },
             { label: pluralize(rootNode?.childKeys.length ?? 0, "top-level branch"), className: "summary-chip" },
@@ -23037,7 +23041,7 @@ function DetailPane({
         ["Status", "Active"],
         ["ID", "root"],
         ["Type", "root"],
-        ["Desc", "Foreground session + orphan activity"],
+        ["Desc", rootNode?.subtitle || "Foreground session + orphan activity"],
         ["Model", UNAVAILABLE_FROM_EVENT_STREAM],
         ["Prompt", UNAVAILABLE_FROM_EVENT_STREAM]
       ] }),
@@ -23521,6 +23525,10 @@ function App() {
       window.removeEventListener("focus", onVisible);
     };
   }, [refresh]);
+  (0, import_react4.useEffect)(() => {
+    const label = snapshot?.sessionMeta?.label;
+    document.title = label ? `Agent Observer \u2014 ${label}` : "Agent Observer";
+  }, [snapshot?.sessionMeta?.label]);
   const model = (0, import_react4.useMemo)(() => snapshot ? buildActivityModel(snapshot) : null, [snapshot]);
   (0, import_react4.useEffect)(() => {
     if (selection && !selectionExists(selection, model)) {
@@ -23549,6 +23557,7 @@ function App() {
   return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
     /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("header", { children: [
       /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("h1", { children: "\u{1F52D} Agent Observer" }),
+      snapshot?.sessionMeta && /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "badge session-badge", title: snapshot.sessionMeta.cwdPath || void 0, children: snapshot.sessionMeta.label }),
       snapshot && /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("span", { className: "badge", children: [
           snapshot.stats.subagentCount,

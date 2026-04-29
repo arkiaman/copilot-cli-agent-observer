@@ -346,6 +346,12 @@ export function App() {
         };
     }, [refresh]);
 
+    // Update document.title dynamically with session label
+    useEffect(() => {
+        const label = snapshot?.sessionMeta?.label;
+        document.title = label ? `Agent Observer — ${label}` : "Agent Observer";
+    }, [snapshot?.sessionMeta?.label]);
+
     const model = useMemo(() => (snapshot ? buildActivityModel(snapshot) : null), [snapshot]);
 
     useEffect(() => {
@@ -391,6 +397,11 @@ export function App() {
         <>
             <header>
                 <h1>🔭 Agent Observer</h1>
+                {snapshot?.sessionMeta && (
+                    <span className="badge session-badge" title={snapshot.sessionMeta.cwdPath || undefined}>
+                        {snapshot.sessionMeta.label}
+                    </span>
+                )}
                 {snapshot && (
                     <>
                         <span className="badge">{snapshot.stats.subagentCount} subagent{snapshot.stats.subagentCount !== 1 ? "s" : ""}</span>

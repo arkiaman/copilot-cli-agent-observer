@@ -15,9 +15,39 @@
  */
 
 import { joinSession } from "@github/copilot-sdk/extension";
-import { join } from "node:path";
+import { join, basename } from "node:path";
+import { execSync } from "node:child_process";
 import { CopilotWebview } from "./lib/copilot-webview.js";
 import { createEventStore, wireSession } from "./lib/event-store.js";
+
+// ── Session identity ────────────────────────────────────────────────────────
+// Derived synchronously before CopilotWebview is constructed (native window
+// title is frozen at spawn time — no post-creation update channel exists).
+
+function deriveSessionMeta() {
+    const cwdPath = process.cwd();
+    const cwdName = basename(cwdPath);
+    let branch = null;
+    try {
+        branch = execSync("git rev-parse --abbrev-ref HEAD", {
+            cwd: cwdPath, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"],
+        }).trim() || null;
+    } catch { /* not a git repo or git unavailable — fine */ }
+
+    const label = branch ? `${cwdName} @ ${branch} (${process.pid})` : `${cwdName} (${process.pid})`;
+    return {
+        label,
+        cwdName,
+        cwdPath,
+        branch,
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+        // workspacePath is set later from session object (post-joinSession)
+        workspacePath: null,
+    };
+}
+
+const sessionMeta = deriveSessionMeta();
 
 // ── Normalized event store ──────────────────────────────────────────────────
 
@@ -41,6 +71,12 @@ async function startObserving() {
     }
     // Reset store so stale data from a prior session is not carried over.
     store.reset();
+    // Invalidate enriched snapshot cache on session transition.
+    _cachedStoreJson = null;
+    _cachedEnrichedJson = null;
+    // Pick up workspace path from the session object (available post-joinSession).
+    // Always reset to avoid leaking a stale path from a prior session.
+    sessionMeta.workspacePath = session?.workspacePath ?? null;
     // Bump generation so any in-flight wireSession from a prior start
     // will detect it is stale and bail out.
     const gen = ++sessionGeneration;
@@ -63,18 +99,33 @@ async function startObserving() {
 
 // ── Webview setup ───────────────────────────────────────────────────────────
 
+// Snapshot enrichment cache — avoids re-parse/re-stringify on every 3s poll
+// when only sessionMeta changed (it rarely does).
+let _cachedStoreJson = null;
+let _cachedEnrichedJson = null;
+
+function enrichedSnapshotJson() {
+    const storeJson = store.snapshotJson();
+    if (storeJson === _cachedStoreJson && _cachedEnrichedJson) return _cachedEnrichedJson;
+    const snap = JSON.parse(storeJson);
+    snap.sessionMeta = { ...sessionMeta };
+    _cachedEnrichedJson = JSON.stringify(snap);
+    _cachedStoreJson = storeJson;
+    return _cachedEnrichedJson;
+}
+
 const webview = new CopilotWebview({
     extensionName: "agent_observer",
     contentDir: join(import.meta.dirname, "content"),
-    title: "Agent Observer",
+    title: `Agent Observer — ${sessionMeta.label}`,
     width: 1100,
     height: 750,
     enableEvalTool: isDevMode,
     callbacks: {
         log: (msg, opts) => session.log(msg, opts),
 
-        // Expose normalized snapshot data to the webview for rendering
-        getSnapshot: () => store.snapshotJson(),
+        // Expose normalized snapshot data + session identity to the webview
+        getSnapshot: () => enrichedSnapshotJson(),
     },
 });
 
