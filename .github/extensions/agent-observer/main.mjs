@@ -14,7 +14,7 @@
  * It is NOT auto-built — run `npm run build` inside content/ after editing TSX.
  */
 
-export const VERSION = "1.2.0";
+export const VERSION = "1.3.0";
 
 import { joinSession } from "@github/copilot-sdk/extension";
 import { join, basename } from "node:path";
@@ -137,10 +137,12 @@ const _diag = {
     hasCommandHandlers: false,
     commandHandlersType: "unknown",
     hasExecuteCommand: false,
+    hasDispatchEvent: false,
     mapGetPatched: false,
-    dispatchPatched: false,
+    dispatchEventPatched: false,
+    protoPatched: false,
     mapGetCalls: [],      // last N calls to patched .get()
-    dispatchCalls: [],    // last N calls to patched _executeCommandAndRespond
+    dispatchCalls: [],    // last N calls to patched dispatch paths
     patchError: null,
     mapContentsAtPatch: [],
     sessionKeys: [],
@@ -163,12 +165,12 @@ const observerDumpTool = {
         try {
             live.mapIsOriginal = session.commandHandlers === _diag._patchedMap;
             live.getIsPatched = session.commandHandlers?.get === _diag._patchedGet;
-            live.dispatchIsPatched = session._executeCommandAndRespond === _diag._patchedDispatch;
+            live.hasOwnDispatchEvent = session.hasOwnProperty("_dispatchEvent");
             live.currentMapKeys = session.commandHandlers instanceof Map ? [...session.commandHandlers.keys()] : [];
         } catch {}
         return JSON.stringify({
             version: VERSION,
-            diagnostics: { ..._diag, _patchedMap: undefined, _patchedGet: undefined, _patchedDispatch: undefined },
+            diagnostics: { ..._diag, _patchedMap: undefined, _patchedGet: undefined },
             live,
             ...store.dumpSummary(),
         }, null, 2);
@@ -226,26 +228,23 @@ try {
         : typeof cmdMap;
     _diag.hasCommandHandlers = cmdMap instanceof Map;
     _diag.hasExecuteCommand = typeof session._executeCommandAndRespond === "function";
+    _diag.hasDispatchEvent = typeof session._dispatchEvent === "function";
 
     // Record what keys exist on the session object (for debugging)
     try { _diag.sessionKeys = Object.getOwnPropertyNames(session).slice(0, 30); } catch {}
 
     if (cmdMap instanceof Map) {
-        // Record initial map contents
         try { _diag.mapContentsAtPatch = [...cmdMap.keys()]; } catch {}
 
-        // PRIMARY FIX: Patch the Map's .get() method directly
+        // Patch Map.get() for diagnostics (tracks what keys are looked up)
         const nativeGet = Map.prototype.get;
         const patchedGet = function (key) {
-            // Ring buffer: keep last 20 calls (shift oldest when full)
             _diag.mapGetCalls.push({ key, ts: Date.now() });
             if (_diag.mapGetCalls.length > 20) _diag.mapGetCalls.shift();
-            // Check both raw and normalized (handles "/observer" → "observer")
             const norm = normalizeCmd(key);
             if (OBSERVER_COMMAND_NAMES.has(key) || OBSERVER_COMMAND_NAMES.has(norm)) {
                 return OBSERVER_HANDLERS.get(norm);
             }
-            // For non-observer keys, preserve native Map#get semantics exactly
             return nativeGet.call(this, key);
         };
         cmdMap.get = patchedGet;
@@ -254,33 +253,75 @@ try {
         _diag._patchedGet = patchedGet;
     }
 
-    // SECONDARY: Also patch _executeCommandAndRespond
-    if (typeof session._executeCommandAndRespond === "function") {
-        const originalDispatch = session._executeCommandAndRespond.bind(session);
-        const patchedDispatch = async function (requestId, commandName, command, args) {
-            const norm = normalizeCmd(commandName);
-            // Record call for diagnostics
-            _diag.dispatchCalls.push({ commandName, norm, requestId, ts: Date.now() });
-            if (_diag.dispatchCalls.length > 20) _diag.dispatchCalls.shift();
-            if ((OBSERVER_COMMAND_NAMES.has(commandName) || OBSERVER_COMMAND_NAMES.has(norm))
-                && this?.commandHandlers instanceof Map) {
-                this.commandHandlers.set(commandName, OBSERVER_HANDLERS.get(norm));
-                if (commandName !== norm) {
-                    this.commandHandlers.set(norm, OBSERVER_HANDLERS.get(norm));
+    // NUCLEAR FIX: Patch _dispatchEvent itself to intercept command.execute
+    // events BEFORE _handleBroadcastEvent runs. This bypasses any V8 JIT
+    // optimization that might skip instance-level _executeCommandAndRespond patches.
+    if (typeof session._dispatchEvent === "function") {
+        const proto = Object.getPrototypeOf(session);
+        const originalDispatchEvent = session._dispatchEvent.bind(session);
+
+        session._dispatchEvent = function (event) {
+            if (event?.type === "command.execute" && event?.data) {
+                const { requestId, commandName, command, args } = event.data;
+                const norm = normalizeCmd(commandName);
+                _diag.dispatchCalls.push({ commandName, norm, requestId, ts: Date.now(), via: "dispatchEvent" });
+                if (_diag.dispatchCalls.length > 20) _diag.dispatchCalls.shift();
+
+                if (OBSERVER_COMMAND_NAMES.has(commandName) || OBSERVER_COMMAND_NAMES.has(norm)) {
+                    const handler = OBSERVER_HANDLERS.get(norm);
+                    // Execute our handler and respond via RPC (mirrors SDK logic)
+                    void (async () => {
+                        try {
+                            await handler({ sessionId: session.sessionId, command, commandName: norm, args });
+                            await session.rpc.commands.handlePendingCommand({ requestId });
+                        } catch (err) {
+                            const message = err instanceof Error ? err.message : String(err);
+                            try {
+                                await session.rpc.commands.handlePendingCommand({ requestId, error: message });
+                            } catch {}
+                        }
+                    })();
+                    // Still dispatch to typed/generic event handlers (but NOT _handleBroadcastEvent for this event)
+                    // Emit a synthetic version that won't trigger command.execute in _handleBroadcastEvent
+                    const typedHandlers = this.typedEventHandlers?.get?.(event.type);
+                    if (typedHandlers) {
+                        for (const h of typedHandlers) { try { h(event); } catch {} }
+                    }
+                    if (this.eventHandlers) {
+                        for (const h of this.eventHandlers) { try { h(event); } catch {} }
+                    }
+                    return; // Don't call original — we handled it
                 }
             }
-            return originalDispatch(requestId, commandName, command, args);
+            // For non-observer events, delegate to original
+            return originalDispatchEvent(event);
         };
-        session._executeCommandAndRespond = patchedDispatch;
-        _diag.dispatchPatched = true;
-        _diag._patchedDispatch = patchedDispatch;
+        _diag.dispatchEventPatched = true;
+    }
+
+    // ALSO patch prototype-level _executeCommandAndRespond as fallback
+    // (in case _dispatchEvent gets replaced or the event arrives via another path)
+    const proto = Object.getPrototypeOf(session);
+    if (proto && typeof proto._executeCommandAndRespond === "function") {
+        const originalProtoExec = proto._executeCommandAndRespond;
+        proto._executeCommandAndRespond = async function (requestId, commandName, command, args) {
+            const norm = normalizeCmd(commandName);
+            _diag.dispatchCalls.push({ commandName, norm, requestId, ts: Date.now(), via: "protoExec" });
+            if (_diag.dispatchCalls.length > 20) _diag.dispatchCalls.shift();
+            if (OBSERVER_COMMAND_NAMES.has(commandName) || OBSERVER_COMMAND_NAMES.has(norm)) {
+                this.commandHandlers?.set?.(commandName, OBSERVER_HANDLERS.get(norm));
+                if (commandName !== norm) this.commandHandlers?.set?.(norm, OBSERVER_HANDLERS.get(norm));
+            }
+            return originalProtoExec.call(this, requestId, commandName, command, args);
+        };
+        _diag.protoPatched = true;
     }
 } catch (e) {
     _diag.patchError = e?.message ?? String(e);
 }
 
 // Always log version to stderr for debugging
-console.error(`agent-observer v${VERSION} | cmdMap=${_diag.commandHandlersType} | mapPatch=${_diag.mapGetPatched} | dispPatch=${_diag.dispatchPatched}`);
+console.error(`agent-observer v${VERSION} | cmdMap=${_diag.commandHandlersType} | mapPatch=${_diag.mapGetPatched} | dispEvtPatch=${_diag.dispatchEventPatched} | protoPatch=${_diag.protoPatched}`);
 
 // Attach immediately to the current foreground session as soon as the extension
 // loads. `onSessionStart` covers later transitions, but existing sessions need an

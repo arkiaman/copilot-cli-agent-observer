@@ -181,7 +181,10 @@ describe("command dispatcher fallback — _executeCommandAndRespond patch", () =
     function createMockSession() {
         const rpcResults = [];
         const sess = {
+            sessionId: "test-session",
             commandHandlers: new Map(),
+            typedEventHandlers: new Map(),
+            eventHandlers: new Set(),
             rpc: { commands: { handlePendingCommand: async (p) => { rpcResults.push(p); } } },
             _rpcResults: rpcResults,
         };
@@ -191,51 +194,86 @@ describe("command dispatcher fallback — _executeCommandAndRespond patch", () =
                 await this.rpc.commands.handlePendingCommand({ requestId, error: `Unknown command: ${commandName}` });
                 return;
             }
-            await handler();
+            await handler({ sessionId: this.sessionId, commandName });
             await this.rpc.commands.handlePendingCommand({ requestId });
+        };
+        sess._handleBroadcastEvent = function (event) {
+            if (event.type === "command.execute") {
+                const { requestId, commandName, command, args } = event.data;
+                void this._executeCommandAndRespond(requestId, commandName, command, args);
+            }
+        };
+        sess._dispatchEvent = function (event) {
+            this._handleBroadcastEvent(event);
         };
         return sess;
     }
 
-    function applyDispatcherPatch(sess) {
-        const orig = sess._executeCommandAndRespond.bind(sess);
-        sess._executeCommandAndRespond = async function (requestId, commandName, command, args) {
-            const norm = normalizeCmd(commandName);
-            if ((OBSERVER_COMMAND_NAMES.has(commandName) || OBSERVER_COMMAND_NAMES.has(norm))
-                && this?.commandHandlers instanceof Map) {
-                this.commandHandlers.set(commandName, OBSERVER_HANDLERS.get(norm));
+    function applyDispatchEventPatch(sess) {
+        const originalDispatchEvent = sess._dispatchEvent.bind(sess);
+        sess._dispatchEvent = function (event) {
+            if (event?.type === "command.execute" && event?.data) {
+                const { requestId, commandName, command, args } = event.data;
+                const norm = normalizeCmd(commandName);
+                if (OBSERVER_COMMAND_NAMES.has(commandName) || OBSERVER_COMMAND_NAMES.has(norm)) {
+                    const handler = OBSERVER_HANDLERS.get(norm);
+                    void (async () => {
+                        try {
+                            await handler({ sessionId: sess.sessionId, command, commandName: norm, args });
+                            await sess.rpc.commands.handlePendingCommand({ requestId });
+                        } catch (err) {
+                            await sess.rpc.commands.handlePendingCommand({ requestId, error: String(err) });
+                        }
+                    })();
+                    return; // Handled — don't call original
+                }
             }
-            return orig(requestId, commandName, command, args);
+            return originalDispatchEvent(event);
         };
     }
 
     beforeEach(() => { openCalled = false; });
 
-    it("injects handler into empty map before dispatch", async () => {
+    it("intercepts command.execute for observer commands via _dispatchEvent", async () => {
         const session = createMockSession();
-        applyDispatcherPatch(session);
+        applyDispatchEventPatch(session);
 
-        await session._executeCommandAndRespond("r1", "observer", {}, []);
+        session._dispatchEvent({ type: "command.execute", data: { requestId: "r1", commandName: "observer", command: {}, args: [] } });
+        await new Promise(r => setTimeout(r, 10)); // Let async handler complete
         assert.equal(openCalled, true);
         assert.deepEqual(session._rpcResults[0], { requestId: "r1" });
     });
 
-    it("handles slash-prefixed command name", async () => {
+    it("intercepts slash-prefixed /observer via _dispatchEvent", async () => {
         const session = createMockSession();
-        applyDispatcherPatch(session);
+        applyDispatchEventPatch(session);
 
-        await session._executeCommandAndRespond("r2", "/observer", {}, []);
+        session._dispatchEvent({ type: "command.execute", data: { requestId: "r2", commandName: "/observer", command: {}, args: [] } });
+        await new Promise(r => setTimeout(r, 10));
         assert.equal(openCalled, true);
     });
 
-    it("is a no-op when _executeCommandAndRespond is missing", () => {
+    it("passes non-observer commands through to original _dispatchEvent", async () => {
         const session = createMockSession();
-        delete session._executeCommandAndRespond;
-        assert.doesNotThrow(() => {
-            if (typeof session._executeCommandAndRespond === "function") {
-                applyDispatcherPatch(session);
-            }
-        });
-        assert.equal(session._executeCommandAndRespond, undefined);
+        session.commandHandlers.set("other-cmd", async () => {});
+        applyDispatchEventPatch(session);
+
+        session._dispatchEvent({ type: "command.execute", data: { requestId: "r3", commandName: "other-cmd", command: {}, args: [] } });
+        await new Promise(r => setTimeout(r, 10));
+        assert.equal(openCalled, false);
+        // Should go through original dispatch
+        assert.deepEqual(session._rpcResults[0], { requestId: "r3" });
+    });
+
+    it("passes non-command events through to original _dispatchEvent", () => {
+        const session = createMockSession();
+        let broadcastCalled = false;
+        session._handleBroadcastEvent = () => { broadcastCalled = true; };
+        session._dispatchEvent = function (event) { this._handleBroadcastEvent(event); };
+        applyDispatchEventPatch(session);
+
+        session._dispatchEvent({ type: "external_tool.requested", data: {} });
+        assert.equal(broadcastCalled, true);
+        assert.equal(openCalled, false);
     });
 });
