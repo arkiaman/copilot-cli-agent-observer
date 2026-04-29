@@ -14,6 +14,8 @@
  * It is NOT auto-built — run `npm run build` inside content/ after editing TSX.
  */
 
+export const VERSION = "1.2.0";
+
 import { joinSession } from "@github/copilot-sdk/extension";
 import { join, basename } from "node:path";
 import { execSync } from "node:child_process";
@@ -129,6 +131,21 @@ const webview = new CopilotWebview({
     },
 });
 
+// ── Diagnostics state (populated after joinSession) ─────────────────────────
+const _diag = {
+    version: VERSION,
+    hasCommandHandlers: false,
+    commandHandlersType: "unknown",
+    hasExecuteCommand: false,
+    mapGetPatched: false,
+    dispatchPatched: false,
+    mapGetCalls: [],      // last N calls to patched .get()
+    dispatchCalls: [],    // last N calls to patched _executeCommandAndRespond
+    patchError: null,
+    mapContentsAtPatch: [],
+    sessionKeys: [],
+};
+
 // ── Observer dump tool (normalized) ─────────────────────────────────────────
 
 const observerDumpTool = {
@@ -140,7 +157,22 @@ const observerDumpTool = {
     ].join(" "),
     parameters: { type: "object", properties: {} },
     skipPermission: true,
-    handler: async () => JSON.stringify(store.dumpSummary(), null, 2),
+    handler: async () => {
+        // Live checks at dump time (detect replacement after patch)
+        const live = {};
+        try {
+            live.mapIsOriginal = session.commandHandlers === _diag._patchedMap;
+            live.getIsPatched = session.commandHandlers?.get === _diag._patchedGet;
+            live.dispatchIsPatched = session._executeCommandAndRespond === _diag._patchedDispatch;
+            live.currentMapKeys = session.commandHandlers instanceof Map ? [...session.commandHandlers.keys()] : [];
+        } catch {}
+        return JSON.stringify({
+            version: VERSION,
+            diagnostics: { ..._diag, _patchedMap: undefined, _patchedGet: undefined, _patchedDispatch: undefined },
+            live,
+            ...store.dumpSummary(),
+        }, null, 2);
+    },
 };
 
 // ── Slash commands ───────────────────────────────────────────────────────────
@@ -174,31 +206,83 @@ const session = await joinSession({
     commands: COMMANDS,
 });
 
-// ── Command dispatcher fallback ─────────────────────────────────────────────
-// The SDK's _executeCommandAndRespond looks up commandHandlers.get(name).
-// On some builds, the handler map is cleared after joinSession (e.g. by a
-// subsequent resumeSession or internal re-registration with commands=undefined).
-// Rather than fight to keep the map populated, we intercept the dispatcher
-// itself: if the command is one of ours, inject the handler into the map just
-// before the original method runs. This guarantees our commands always resolve.
+// ── Command dispatcher fallback + diagnostics ──────────────────────────────
+// Populate _diag (declared above, before observer_dump_summary tool).
 const OBSERVER_COMMAND_NAMES = new Set(COMMANDS.map(c => c.name));
 const OBSERVER_HANDLERS = new Map(COMMANDS.map(c => [c.name, c.handler]));
+
+/** Normalize a command name — strip leading "/" if present, trim whitespace. */
+function normalizeCmd(name) {
+    if (typeof name !== "string") return name;
+    const trimmed = name.trim();
+    return trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
+}
+
 try {
+    const cmdMap = session.commandHandlers;
+    _diag.commandHandlersType = cmdMap === undefined ? "undefined"
+        : cmdMap === null ? "null"
+        : cmdMap instanceof Map ? "Map"
+        : typeof cmdMap;
+    _diag.hasCommandHandlers = cmdMap instanceof Map;
+    _diag.hasExecuteCommand = typeof session._executeCommandAndRespond === "function";
+
+    // Record what keys exist on the session object (for debugging)
+    try { _diag.sessionKeys = Object.getOwnPropertyNames(session).slice(0, 30); } catch {}
+
+    if (cmdMap instanceof Map) {
+        // Record initial map contents
+        try { _diag.mapContentsAtPatch = [...cmdMap.keys()]; } catch {}
+
+        // PRIMARY FIX: Patch the Map's .get() method directly
+        const nativeGet = Map.prototype.get;
+        const patchedGet = function (key) {
+            const activeMap = this instanceof Map ? this : cmdMap;
+            // Record call for diagnostics (keep last 20)
+            if (_diag.mapGetCalls.length < 20) {
+                _diag.mapGetCalls.push({ key, ts: Date.now(), mapSize: activeMap.size });
+            }
+            // Check both raw and normalized (handles "/observer" → "observer")
+            const norm = normalizeCmd(key);
+            if (OBSERVER_COMMAND_NAMES.has(key) || OBSERVER_COMMAND_NAMES.has(norm)) {
+                return OBSERVER_HANDLERS.get(norm);
+            }
+            return nativeGet.call(activeMap, key);
+        };
+        cmdMap.get = patchedGet;
+        _diag.mapGetPatched = true;
+        _diag._patchedMap = cmdMap;
+        _diag._patchedGet = patchedGet;
+    }
+
+    // SECONDARY: Also patch _executeCommandAndRespond
     if (typeof session._executeCommandAndRespond === "function") {
         const originalDispatch = session._executeCommandAndRespond.bind(session);
-        session._executeCommandAndRespond = async function (requestId, commandName, command, args) {
-            if (OBSERVER_COMMAND_NAMES.has(commandName) && session.commandHandlers instanceof Map) {
-                session.commandHandlers.set(commandName, OBSERVER_HANDLERS.get(commandName));
+        const patchedDispatch = async function (requestId, commandName, command, args) {
+            const norm = normalizeCmd(commandName);
+            // Record call for diagnostics
+            if (_diag.dispatchCalls.length < 20) {
+                _diag.dispatchCalls.push({ commandName, norm, requestId, ts: Date.now() });
+            }
+            if ((OBSERVER_COMMAND_NAMES.has(commandName) || OBSERVER_COMMAND_NAMES.has(norm))
+                && this?.commandHandlers instanceof Map) {
+                this.commandHandlers.set(commandName, OBSERVER_HANDLERS.get(norm));
+                if (commandName !== norm) {
+                    this.commandHandlers.set(norm, OBSERVER_HANDLERS.get(norm));
+                }
             }
             return originalDispatch(requestId, commandName, command, args);
         };
+        session._executeCommandAndRespond = patchedDispatch;
+        _diag.dispatchPatched = true;
+        _diag._patchedDispatch = patchedDispatch;
     }
 } catch (e) {
-    // Non-fatal: tools still work as fallback if patching fails
-    if (process.env.AGENT_OBSERVER_DEV) {
-        console.error("agent-observer: dispatcher fallback patch failed:", e?.message ?? e);
-    }
+    _diag.patchError = e?.message ?? String(e);
 }
+
+// Always log version to stderr for debugging
+console.error(`agent-observer v${VERSION} | cmdMap=${_diag.commandHandlersType} | mapPatch=${_diag.mapGetPatched} | dispPatch=${_diag.dispatchPatched}`);
 
 // Attach immediately to the current foreground session as soon as the extension
 // loads. `onSessionStart` covers later transitions, but existing sessions need an

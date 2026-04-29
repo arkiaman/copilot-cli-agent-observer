@@ -1,171 +1,241 @@
 /**
  * Tests for the command dispatcher fallback mechanism.
  *
- * The dispatcher fallback patches session._executeCommandAndRespond to ensure
- * our command handlers are in the commandHandlers map just before lookup,
- * regardless of whether something else cleared the map after joinSession.
+ * PRIMARY: Patches Map.prototype.get on commandHandlers so that .get(name)
+ * always returns our handler for observer/agent-observer, even after clear().
+ * Handles both raw names ("observer") and slash-prefixed ("/observer").
+ *
+ * SECONDARY: Also patches _executeCommandAndRespond as belt-and-suspenders.
  */
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-describe("command dispatcher fallback", () => {
-    let session;
-    let dispatchCalls;
-    let openCalled;
+/** Normalize a command name — strip leading "/" if present, trim whitespace. */
+function normalizeCmd(name) {
+    if (typeof name !== "string") return name;
+    const trimmed = name.trim();
+    return trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
+}
 
+describe("command dispatcher fallback — Map.get() patch", () => {
+    let openCalled;
     const openObserverHandler = async () => { openCalled = true; };
 
     const COMMANDS = [
-        { name: "agent-observer", description: "Open the agent observer webview window.", handler: openObserverHandler },
-        { name: "observer",       description: "Open the agent observer webview window.", handler: openObserverHandler },
+        { name: "agent-observer", description: "Open", handler: openObserverHandler },
+        { name: "observer",       description: "Open", handler: openObserverHandler },
     ];
-
     const OBSERVER_COMMAND_NAMES = new Set(COMMANDS.map(c => c.name));
+    const OBSERVER_HANDLERS = new Map(COMMANDS.map(c => [c.name, c.handler]));
 
-    /** Simulate the SDK's _executeCommandAndRespond behavior */
+    /** Apply the Map.get() patch — mirrors main.mjs logic */
+    function applyMapGetPatch(cmdMap) {
+        const nativeGet = Map.prototype.get;
+        cmdMap.get = function (key) {
+            const activeMap = this instanceof Map ? this : cmdMap;
+            const norm = normalizeCmd(key);
+            if (OBSERVER_COMMAND_NAMES.has(key) || OBSERVER_COMMAND_NAMES.has(norm)) {
+                return OBSERVER_HANDLERS.get(norm);
+            }
+            return nativeGet.call(activeMap, key);
+        };
+    }
+
+    /** Simulates SDK's _executeCommandAndRespond using map.get() */
+    async function sdkDispatch(cmdMap, commandName) {
+        const handler = cmdMap.get(commandName);
+        if (!handler) return { error: `Unknown command: ${commandName}` };
+        await handler();
+        return { success: true };
+    }
+
+    beforeEach(() => { openCalled = false; });
+
+    it("returns our handler for /observer even when map is empty", async () => {
+        const map = new Map();
+        applyMapGetPatch(map);
+        assert.equal(map.size, 0);
+
+        const result = await sdkDispatch(map, "observer");
+        assert.equal(openCalled, true);
+        assert.deepEqual(result, { success: true });
+    });
+
+    it("returns our handler for /agent-observer even when map is empty", async () => {
+        const map = new Map();
+        applyMapGetPatch(map);
+
+        const result = await sdkDispatch(map, "agent-observer");
+        assert.equal(openCalled, true);
+        assert.deepEqual(result, { success: true });
+    });
+
+    it("handles slash-prefixed command names (/observer)", async () => {
+        const map = new Map();
+        applyMapGetPatch(map);
+
+        const result = await sdkDispatch(map, "/observer");
+        assert.equal(openCalled, true);
+        assert.deepEqual(result, { success: true });
+    });
+
+    it("handles slash-prefixed command names (/agent-observer)", async () => {
+        const map = new Map();
+        applyMapGetPatch(map);
+
+        const result = await sdkDispatch(map, "/agent-observer");
+        assert.equal(openCalled, true);
+        assert.deepEqual(result, { success: true });
+    });
+
+    it("still works after map.clear() (simulates registerCommands(undefined))", async () => {
+        const map = new Map();
+        map.set("observer", openObserverHandler);
+        applyMapGetPatch(map);
+
+        map.clear();
+        assert.equal(map.size, 0);
+
+        const result = await sdkDispatch(map, "observer");
+        assert.equal(openCalled, true);
+        assert.deepEqual(result, { success: true });
+    });
+
+    it("delegates non-observer commands to native Map.get()", async () => {
+        const map = new Map();
+        let otherCalled = false;
+        map.set("other-cmd", async () => { otherCalled = true; });
+        applyMapGetPatch(map);
+
+        const handler = map.get("other-cmd");
+        assert.ok(handler);
+        await handler();
+        assert.equal(otherCalled, true);
+        assert.equal(openCalled, false);
+    });
+
+    it("returns undefined for truly unknown commands", async () => {
+        const map = new Map();
+        applyMapGetPatch(map);
+
+        const result = await sdkDispatch(map, "nonexistent");
+        assert.equal(openCalled, false);
+        assert.deepEqual(result, { error: "Unknown command: nonexistent" });
+    });
+
+    it("survives multiple clear/repopulate cycles", async () => {
+        const map = new Map();
+        applyMapGetPatch(map);
+
+        for (let i = 0; i < 5; i++) {
+            map.clear();
+            map.set("something-else", () => {});
+        }
+
+        const result = await sdkDispatch(map, "observer");
+        assert.equal(openCalled, true);
+        assert.deepEqual(result, { success: true });
+    });
+
+    it("works when .get() is called unbound (extracted reference)", async () => {
+        const map = new Map();
+        applyMapGetPatch(map);
+
+        // Extract the get method and call without binding
+        const getFn = map.get;
+        const handler = getFn.call(map, "observer");
+        assert.ok(handler);
+    });
+});
+
+describe("normalizeCmd", () => {
+    it("strips leading slash", () => {
+        assert.equal(normalizeCmd("/observer"), "observer");
+    });
+
+    it("leaves bare names unchanged", () => {
+        assert.equal(normalizeCmd("observer"), "observer");
+    });
+
+    it("trims whitespace", () => {
+        assert.equal(normalizeCmd("  /observer  "), "observer");
+    });
+
+    it("handles non-string input gracefully", () => {
+        assert.equal(normalizeCmd(undefined), undefined);
+        assert.equal(normalizeCmd(null), null);
+    });
+});
+
+describe("command dispatcher fallback — _executeCommandAndRespond patch", () => {
+    let openCalled;
+    const openObserverHandler = async () => { openCalled = true; };
+
+    const COMMANDS = [
+        { name: "agent-observer", description: "Open", handler: openObserverHandler },
+        { name: "observer",       description: "Open", handler: openObserverHandler },
+    ];
+    const OBSERVER_COMMAND_NAMES = new Set(COMMANDS.map(c => c.name));
+    const OBSERVER_HANDLERS = new Map(COMMANDS.map(c => [c.name, c.handler]));
+
     function createMockSession() {
         const rpcResults = [];
         const sess = {
             commandHandlers: new Map(),
-            rpc: {
-                commands: {
-                    handlePendingCommand: async (payload) => { rpcResults.push(payload); },
-                },
-            },
+            rpc: { commands: { handlePendingCommand: async (p) => { rpcResults.push(p); } } },
             _rpcResults: rpcResults,
         };
-
-        // Simulate SDK's _executeCommandAndRespond
-        sess._executeCommandAndRespond = async function (requestId, commandName, command, args) {
+        sess._executeCommandAndRespond = async function (requestId, commandName) {
             const handler = this.commandHandlers.get(commandName);
             if (!handler) {
-                await this.rpc.commands.handlePendingCommand({
-                    requestId,
-                    error: `Unknown command: ${commandName}`,
-                });
+                await this.rpc.commands.handlePendingCommand({ requestId, error: `Unknown command: ${commandName}` });
                 return;
             }
-            try {
-                await handler({ sessionId: "test-session", command, commandName, args });
-                await this.rpc.commands.handlePendingCommand({ requestId });
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                await this.rpc.commands.handlePendingCommand({ requestId, error: message });
-            }
+            await handler();
+            await this.rpc.commands.handlePendingCommand({ requestId });
         };
-
         return sess;
     }
 
-    /** Apply the same dispatcher fallback logic from main.mjs */
-    function applyDispatcherFallback(sess) {
-        const originalDispatch = sess._executeCommandAndRespond.bind(sess);
+    function applyDispatcherPatch(sess) {
+        const orig = sess._executeCommandAndRespond.bind(sess);
         sess._executeCommandAndRespond = async function (requestId, commandName, command, args) {
-            if (OBSERVER_COMMAND_NAMES.has(commandName) && sess.commandHandlers instanceof Map) {
-                sess.commandHandlers.set(commandName, openObserverHandler);
+            const norm = normalizeCmd(commandName);
+            if ((OBSERVER_COMMAND_NAMES.has(commandName) || OBSERVER_COMMAND_NAMES.has(norm))
+                && this?.commandHandlers instanceof Map) {
+                this.commandHandlers.set(commandName, OBSERVER_HANDLERS.get(norm));
             }
-            return originalDispatch(requestId, commandName, command, args);
+            return orig(requestId, commandName, command, args);
         };
     }
 
-    beforeEach(() => {
-        session = createMockSession();
-        openCalled = false;
-        dispatchCalls = [];
-    });
+    beforeEach(() => { openCalled = false; });
 
-    it("handles /observer when commandHandlers map is empty", async () => {
-        applyDispatcherFallback(session);
-        // Map is empty — simulates the bug condition
-        assert.equal(session.commandHandlers.size, 0);
+    it("injects handler into empty map before dispatch", async () => {
+        const session = createMockSession();
+        applyDispatcherPatch(session);
 
-        await session._executeCommandAndRespond("req-1", "observer", {}, []);
-
+        await session._executeCommandAndRespond("r1", "observer", {}, []);
         assert.equal(openCalled, true);
-        assert.equal(session._rpcResults.length, 1);
-        assert.deepEqual(session._rpcResults[0], { requestId: "req-1" }); // success, no error
+        assert.deepEqual(session._rpcResults[0], { requestId: "r1" });
     });
 
-    it("handles /agent-observer when commandHandlers map is empty", async () => {
-        applyDispatcherFallback(session);
+    it("handles slash-prefixed command name", async () => {
+        const session = createMockSession();
+        applyDispatcherPatch(session);
 
-        await session._executeCommandAndRespond("req-2", "agent-observer", {}, []);
-
+        await session._executeCommandAndRespond("r2", "/observer", {}, []);
         assert.equal(openCalled, true);
-        assert.deepEqual(session._rpcResults[0], { requestId: "req-2" });
-    });
-
-    it("delegates non-observer commands to original dispatch", async () => {
-        const customHandler = async () => { dispatchCalls.push("custom"); };
-        session.commandHandlers.set("other-command", customHandler);
-        applyDispatcherFallback(session);
-
-        await session._executeCommandAndRespond("req-3", "other-command", {}, []);
-
-        assert.equal(dispatchCalls.length, 1);
-        assert.equal(openCalled, false);
-        assert.deepEqual(session._rpcResults[0], { requestId: "req-3" });
-    });
-
-    it("reports Unknown command for unregistered non-observer commands", async () => {
-        applyDispatcherFallback(session);
-
-        await session._executeCommandAndRespond("req-4", "unknown-cmd", {}, []);
-
-        assert.equal(openCalled, false);
-        assert.deepEqual(session._rpcResults[0], {
-            requestId: "req-4",
-            error: "Unknown command: unknown-cmd",
-        });
-    });
-
-    it("still works even if commandHandlers map was cleared after patch", async () => {
-        // Register normally first
-        session.commandHandlers.set("observer", openObserverHandler);
-        applyDispatcherFallback(session);
-
-        // Simulate a later registerCommands(undefined) clearing the map
-        session.commandHandlers.clear();
-        assert.equal(session.commandHandlers.size, 0);
-
-        // Dispatch should still work thanks to the fallback
-        await session._executeCommandAndRespond("req-5", "observer", {}, []);
-
-        assert.equal(openCalled, true);
-        assert.deepEqual(session._rpcResults[0], { requestId: "req-5" });
-    });
-
-    it("does not interfere when handlers are already registered", async () => {
-        // Handlers already in map (normal case)
-        session.commandHandlers.set("observer", openObserverHandler);
-        session.commandHandlers.set("agent-observer", openObserverHandler);
-        applyDispatcherFallback(session);
-
-        await session._executeCommandAndRespond("req-6", "observer", {}, []);
-
-        assert.equal(openCalled, true);
-        assert.deepEqual(session._rpcResults[0], { requestId: "req-6" });
     });
 
     it("is a no-op when _executeCommandAndRespond is missing", () => {
-        // Simulate an older SDK without the dispatch method
+        const session = createMockSession();
         delete session._executeCommandAndRespond;
-
-        // Should not throw
         assert.doesNotThrow(() => {
-            // Inline the same guard logic from main.mjs
             if (typeof session._executeCommandAndRespond === "function") {
-                const originalDispatch = session._executeCommandAndRespond.bind(session);
-                session._executeCommandAndRespond = async function (requestId, commandName) {
-                    if (OBSERVER_COMMAND_NAMES.has(commandName) && session.commandHandlers instanceof Map) {
-                        session.commandHandlers.set(commandName, openObserverHandler);
-                    }
-                    return originalDispatch(requestId, commandName);
-                };
+                applyDispatcherPatch(session);
             }
         });
-
-        // Method should remain absent
         assert.equal(session._executeCommandAndRespond, undefined);
     });
 });
