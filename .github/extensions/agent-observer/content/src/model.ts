@@ -394,6 +394,9 @@ export function buildActivityModel(snapshot: Snapshot): ActivityModel {
         if (hiddenToolCallIds.has(record.id)) continue;
         const key = makeNodeKey("toolcall", record.id);
         const title = record.toolName || shortId(record.id);
+        // Use lean summary fields if available, fall back to full fields
+        const argText = record.argSummary ?? summarizeArgs(record.toolName, record.arguments);
+        const resText = record.resultSnippet ?? record.resultPreview;
         nodesByKey.set(key, {
             key,
             kind: "toolcall",
@@ -404,10 +407,10 @@ export function buildActivityModel(snapshot: Snapshot): ActivityModel {
             kindLabel: "tool",
             title,
             subtitle: [
-                summarizeArgs(record.toolName, record.arguments) ||
-                (record.resultPreview ? previewText(safeText(record.resultPreview), 80) : ""),
+                argText ||
+                (resText ? previewText(safeText(resText), 80) : ""),
             ].filter(Boolean).join(" · "),
-            searchText: `${title} ${stringifyForSearch(record.arguments)} ${record.resultPreview ?? ""}`.toLowerCase(),
+            searchText: `${title} ${argText ?? ""} ${resText ?? ""}`.toLowerCase(),
             parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
             childKeys: graph.childNodeKeys[key] ?? [],
             pathKeys: graph.pathNodeKeys[key] ?? [rootNodeKey, key],
@@ -418,13 +421,15 @@ export function buildActivityModel(snapshot: Snapshot): ActivityModel {
 
     for (const record of snapshot.messages) {
         const key = makeNodeKey("message", record.id);
-        const content = safeText(record.content);
+        // Use lean preview fields if available, fall back to full content
+        const content = safeText(record.contentPreview ?? record.content);
         const toolNames = messageToolNames.get(record.id) ?? [];
         const displayTitle = content
             ? previewText(content, 200)
             : toolNames.length > 0
                 ? `→ ${toolNames.slice(0, 4).join(", ")}${toolNames.length > 4 ? ` (+${toolNames.length - 4})` : ""}`
                 : "(empty)";
+        const reasoningText = record.reasoningPreview ?? record.reasoningText;
         nodesByKey.set(key, {
             key,
             kind: "message",
@@ -435,7 +440,7 @@ export function buildActivityModel(snapshot: Snapshot): ActivityModel {
             kindLabel: "msg",
             title: displayTitle,
             subtitle: record.toolRequestCount > 0 ? `${record.toolRequestCount} tool req${record.toolRequestCount === 1 ? "" : "s"}` : "",
-            searchText: `${content} ${record.reasoningText ?? ""}`.toLowerCase(),
+            searchText: `${content} ${reasoningText ?? ""}`.toLowerCase(),
             parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
             childKeys: graph.childNodeKeys[key] ?? [],
             pathKeys: graph.pathNodeKeys[key] ?? [rootNodeKey, key],
@@ -480,6 +485,8 @@ export function buildActivityModel(snapshot: Snapshot): ActivityModel {
             const pathKeys = structuralNode?.pathKeys ?? [rootNodeKey];
             const owner = resolveOwnerFromPath(nodesByKey, pathKeys);
             const orphan = structuralNode?.orphan ?? false;
+            const argText = record.argSummary ?? summarizeArgs(record.toolName, record.arguments);
+            const resText = record.resultSnippet ?? record.resultPreview;
             items.push({
                 key: `${ref.kind}:${record.id}`,
                 kind: "toolcall",
@@ -494,12 +501,12 @@ export function buildActivityModel(snapshot: Snapshot): ActivityModel {
                 icon: statusIcon(record.status),
                 kindLabel: "tool",
                 title: record.toolName || shortId(record.id),
-                subtitle: summarizeArgs(record.toolName, record.arguments) ||
-                    (record.resultPreview ? previewText(safeText(record.resultPreview), 100) : ""),
-                resultLine: summarizeArgs(record.toolName, record.arguments)
-                    ? resultSnippet(record.toolName, record.resultPreview)
+                subtitle: argText ||
+                    (resText ? previewText(safeText(resText), 100) : ""),
+                resultLine: argText
+                    ? resultSnippet(record.toolName, resText)
                     : "",
-                searchText: `${record.toolName} ${stringifyForSearch(record.arguments)} ${record.resultPreview ?? ""}`.toLowerCase(),
+                searchText: `${record.toolName} ${argText ?? ""} ${resText ?? ""}`.toLowerCase(),
             });
             continue;
         }

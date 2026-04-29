@@ -14,7 +14,7 @@
  * It is NOT auto-built — run `npm run build` inside content/ after editing TSX.
  */
 
-export const VERSION = "1.3.0";
+export const VERSION = "1.4.0";
 
 import { joinSession } from "@github/copilot-sdk/extension";
 import { join, basename } from "node:path";
@@ -107,7 +107,7 @@ let _cachedStoreJson = null;
 let _cachedEnrichedJson = null;
 
 function enrichedSnapshotJson() {
-    const storeJson = store.snapshotJson();
+    const storeJson = store.snapshotJsonLean();
     if (storeJson === _cachedStoreJson && _cachedEnrichedJson) return _cachedEnrichedJson;
     const snap = JSON.parse(storeJson);
     snap.sessionMeta = { ...sessionMeta };
@@ -128,6 +128,15 @@ const webview = new CopilotWebview({
 
         // Expose normalized snapshot data + session identity to the webview
         getSnapshot: () => enrichedSnapshotJson(),
+
+        // Cheap revision poll — frontend checks this before fetching full snapshot
+        getRevision: () => String(store.getRevision()),
+
+        // On-demand full record detail (avoids sending heavy fields in snapshot)
+        getRecordDetail: (kind, id) => {
+            const detail = store.getRecordDetail(kind, id);
+            return detail ? JSON.stringify(detail) : "null";
+        },
     },
 });
 

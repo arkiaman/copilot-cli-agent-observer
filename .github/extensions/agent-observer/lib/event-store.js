@@ -41,6 +41,28 @@ import {
  * Create a new EventStore instance.  All state is encapsulated; nothing leaks
  * to module scope so tests can create isolated stores.
  */
+// ── Configurable limits ─────────────────────────────────────────────────────
+
+const MAX_TOOL_CALLS = 2000;
+const MAX_MESSAGES = 2000;
+const MAX_SEEN_IDS = 50_000;
+const ARGS_TRUNCATE = 500;
+const CONTENT_TRUNCATE = 2000;
+
+/** Truncate a value for storage. Objects are JSON-stringified first. */
+function truncateValue(val, limit) {
+    if (val == null) return val;
+    const str = typeof val === "string" ? val : JSON.stringify(val);
+    return str.length <= limit ? (typeof val === "string" ? str : val) : str.slice(0, limit) + "…";
+}
+
+/** Summarize a value into a short string for lean snapshots. */
+function summarizeForLean(val, limit = 100) {
+    if (val == null) return undefined;
+    const str = typeof val === "string" ? val : JSON.stringify(val);
+    return str.length <= limit ? str : str.slice(0, limit) + "…";
+}
+
 export function createEventStore() {
     /** @type {Map<string, import("./event-model.js").SubagentRecord>} */
     const subagents = new Map();
@@ -53,17 +75,65 @@ export function createEventStore() {
     let ingestedCount = 0;
     /** Event IDs already seen from persisted log / live bus for dedupe. */
     const seenEventIds = new Set();
+    /** FIFO order for seenEventIds eviction. */
+    const seenEventOrder = [];
     /** Monotonic revision for structural snapshot/json cache invalidation. */
     let revision = 0;
     let cachedSnapshotCoreRevision = -1;
     let cachedSnapshotCore = null;
     let cachedSnapshotJsonRevision = -1;
     let cachedSnapshotJson = "";
+    let cachedLeanJsonRevision = -1;
+    let cachedLeanJson = "";
     let lastStructuralIngestedCount = 0;
 
     function markDirty() {
         revision += 1;
         lastStructuralIngestedCount = ingestedCount;
+    }
+
+    /** Track a seen event ID with FIFO eviction when cap is reached. */
+    function trackSeenId(id) {
+        if (seenEventIds.has(id)) return false;
+        seenEventIds.add(id);
+        seenEventOrder.push(id);
+        while (seenEventIds.size > MAX_SEEN_IDS) {
+            const oldest = seenEventOrder.shift();
+            if (oldest !== undefined) seenEventIds.delete(oldest);
+        }
+        return true;
+    }
+
+    /**
+     * Evict oldest completed tool calls when over the cap.
+     * Preserves running tool calls to avoid graph corruption.
+     */
+    function evictToolCalls() {
+        if (toolCalls.size <= MAX_TOOL_CALLS) return;
+        const completedEntries = [];
+        for (const [id, tc] of toolCalls) {
+            // Preserve running records and records linked to subagents
+            if (tc.status === ToolCallStatus.RUNNING) continue;
+            if (subagents.has(id)) continue;
+            completedEntries.push([id, tc._lastEventTs || ""]);
+        }
+        completedEntries.sort((a, b) => a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0);
+        const toRemove = toolCalls.size - MAX_TOOL_CALLS;
+        for (let i = 0; i < Math.min(toRemove, completedEntries.length); i++) {
+            toolCalls.delete(completedEntries[i][0]);
+        }
+    }
+
+    /** Evict oldest messages when over the cap. */
+    function evictMessages() {
+        if (messages.size <= MAX_MESSAGES) return;
+        const entries = [...messages.entries()]
+            .map(([id, m]) => [id, m._lastEventTs || ""])
+            .sort((a, b) => a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0);
+        const toRemove = messages.size - MAX_MESSAGES;
+        for (let i = 0; i < Math.min(toRemove, entries.length); i++) {
+            messages.delete(entries[i][0]);
+        }
     }
 
     // ── Live-event ingestors ────────────────────────────────────────────
@@ -150,7 +220,6 @@ export function createEventStore() {
             const d = event.data;
             const ts = event.timestamp ?? new Date().toISOString();
             const reasoning = classifyReasoning(d);
-            // Use event id if available, otherwise generate one
             const id = event.id ?? `msg-${ts}-${ingestedCount}`;
             upsertAssistantMessage(messages, {
                 id,
@@ -180,13 +249,17 @@ export function createEventStore() {
      */
     function ingest(eventType, event) {
         if (event?.id) {
-            if (seenEventIds.has(event.id)) return;
-            seenEventIds.add(event.id);
+            if (!trackSeenId(event.id)) return;
         }
         const fn = ingestors[eventType];
         if (fn) {
             fn(event);
             markDirty();
+            // Periodic eviction (check every 100 ingestions)
+            if (ingestedCount % 100 === 0) {
+                evictToolCalls();
+                evictMessages();
+            }
         } else if (passiveEvents.has(eventType)) {
             ingestedCount++;
         }
@@ -413,8 +486,6 @@ export function createEventStore() {
             executionGraph: core.executionGraph,
             recentEvents: core.recentEvents,
             timeline: core.timeline,
-            // Keep webview payload stable across passive-only events so
-            // progress/idle diagnostics do not force full reparse/re-render.
             stats: {
                 ...core.statsBase,
                 ingestedEventCount: lastStructuralIngestedCount,
@@ -422,6 +493,87 @@ export function createEventStore() {
         });
         cachedSnapshotJsonRevision = revision;
         return cachedSnapshotJson;
+    }
+
+    /**
+     * Lean snapshot JSON for the webview — strips heavy fields (arguments,
+     * content, reasoningText) and replaces them with derived summaries.
+     * Dramatically reduces JSON size and frontend memory.
+     */
+    function snapshotJsonLean() {
+        if (cachedLeanJsonRevision === revision && cachedLeanJson) {
+            return cachedLeanJson;
+        }
+        const core = snapshotCore();
+
+        // Strip heavy fields from tool calls, keep lightweight summaries
+        const leanToolCalls = core.toolCalls.map((tc) => ({
+            id: tc.id,
+            parentToolCallId: tc.parentToolCallId,
+            toolName: tc.toolName,
+            status: tc.status,
+            success: tc.success,
+            startedAt: tc.startedAt,
+            completedAt: tc.completedAt,
+            _lastEventTs: tc._lastEventTs,
+            // Derived summaries for search/titles (replace full arguments/resultPreview)
+            argSummary: summarizeForLean(tc.arguments, 100),
+            resultSnippet: typeof tc.resultPreview === "string" ? tc.resultPreview.slice(0, 150) : undefined,
+        }));
+
+        // Strip heavy fields from messages
+        const leanMessages = core.messages.map((m) => ({
+            id: m.id,
+            parentToolCallId: m.parentToolCallId,
+            toolRequestCount: m.toolRequestCount,
+            reasoningAvailability: m.reasoningAvailability,
+            timestamp: m.timestamp,
+            _lastEventTs: m._lastEventTs,
+            // Derived summaries
+            contentPreview: typeof m.content === "string" ? m.content.slice(0, 200) : "",
+            contentLength: typeof m.content === "string" ? m.content.length : 0,
+            reasoningPreview: typeof m.reasoningText === "string" ? m.reasoningText.slice(0, 200) : undefined,
+        }));
+
+        cachedLeanJson = JSON.stringify({
+            revision,
+            subagents: core.subagents,
+            toolCalls: leanToolCalls,
+            messages: leanMessages,
+            executionGraph: core.executionGraph,
+            timeline: core.timeline,
+            stats: {
+                ...core.statsBase,
+                ingestedEventCount: lastStructuralIngestedCount,
+            },
+        });
+        cachedLeanJsonRevision = revision;
+        return cachedLeanJson;
+    }
+
+    /** Get the current revision number (cheap, no serialization). */
+    function getRevision() {
+        return revision;
+    }
+
+    /**
+     * Get full detail for a single record — used for on-demand loading
+     * when a user selects a node in the webview.
+     */
+    function getRecordDetail(kind, id) {
+        if (kind === "toolcall") {
+            const tc = toolCalls.get(id);
+            return tc ? { ...tc } : null;
+        }
+        if (kind === "message") {
+            const m = messages.get(id);
+            return m ? { ...m } : null;
+        }
+        if (kind === "subagent") {
+            const s = subagents.get(id);
+            return s ? { ...s } : null;
+        }
+        return null;
     }
 
     /**
@@ -473,12 +625,15 @@ export function createEventStore() {
         messages.clear();
         ingestedCount = 0;
         seenEventIds.clear();
+        seenEventOrder.length = 0;
         lastStructuralIngestedCount = 0;
         markDirty();
         cachedSnapshotCore = null;
         cachedSnapshotCoreRevision = -1;
         cachedSnapshotJson = "";
         cachedSnapshotJsonRevision = -1;
+        cachedLeanJson = "";
+        cachedLeanJsonRevision = -1;
     }
 
     return {
@@ -486,6 +641,9 @@ export function createEventStore() {
         ingestReplayMessage,
         snapshot,
         snapshotJson,
+        snapshotJsonLean,
+        getRevision,
+        getRecordDetail,
         dumpSummary,
         reset,
         /** Expose maps for advanced queries (e.g., webview callbacks) */

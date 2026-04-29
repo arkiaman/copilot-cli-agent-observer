@@ -2,8 +2,8 @@
  * Detail pane — shows selected node context, lineage, and raw data.
  */
 
-import React, { useState } from "react";
-import type { Snapshot, ActivityModel, Selection, ExecutionNode, DetailHeroPill } from "./types.js";
+import React, { useState, useEffect, useRef } from "react";
+import type { Snapshot, ActivityModel, Selection, ExecutionNode, DetailHeroPill, ToolCallRecord, AssistantMessageRecord } from "./types.js";
 import { SYNTHETIC_ROOT_ID, UNAVAILABLE_FROM_EVENT_STREAM } from "./types.js";
 import { shortId, fmtTime, fmtDuration, statusIcon, statusClass, safeText, previewText, pluralize, extractNamedText, toPromptBlock } from "./helpers.js";
 import { parseNodeKey } from "./helpers.js";
@@ -20,6 +20,42 @@ import {
     getRecentActivityNodes,
     inferDurationMsForNode,
 } from "./model.js";
+
+/* ── Lazy detail loading ─────────────────────────────────────────────────── */
+
+/** Fetch full record detail on-demand (avoids sending heavy fields in snapshot). */
+function useRecordDetail<T>(kind: string | null, id: string | null): T | null {
+    const [detail, setDetail] = useState<T | null>(null);
+    const cacheRef = useRef<Map<string, T>>(new Map());
+
+    useEffect(() => {
+        if (!kind || !id) { setDetail(null); return; }
+        const cacheKey = `${kind}:${id}`;
+        const cached = cacheRef.current.get(cacheKey);
+        if (cached) { setDetail(cached); return; }
+
+        let cancelled = false;
+        copilot.getRecordDetail(kind, id).then((raw) => {
+            if (cancelled) return;
+            try {
+                const parsed = JSON.parse(raw) as T | null;
+                if (parsed) {
+                    // Bounded cache: evict oldest if > 20 entries
+                    if (cacheRef.current.size > 20) {
+                        const first = cacheRef.current.keys().next().value;
+                        if (first) cacheRef.current.delete(first);
+                    }
+                    cacheRef.current.set(cacheKey, parsed);
+                }
+                setDetail(parsed);
+            } catch { setDetail(null); }
+        }).catch(() => { if (!cancelled) setDetail(null); });
+
+        return () => { cancelled = true; };
+    }, [kind, id]);
+
+    return detail;
+}
 
 /* ── Shared sub-components ──────────────────────────────────────────────── */
 
@@ -183,6 +219,16 @@ export function DetailPane({
     model: ActivityModel;
     selection: Selection;
 }) {
+    // Hooks must be called unconditionally (React rules of hooks)
+    const fullToolDetail = useRecordDetail<ToolCallRecord>(
+        selection?.kind === "toolcall" ? "toolcall" : null,
+        selection?.kind === "toolcall" ? selection.id : null,
+    );
+    const fullMessageDetail = useRecordDetail<AssistantMessageRecord>(
+        selection?.kind === "message" ? "message" : null,
+        selection?.kind === "message" ? selection.id : null,
+    );
+
     if (!selection) {
         return <div className="detail-empty">Select root, branch, tool, or message to inspect details.</div>;
     }
@@ -316,11 +362,14 @@ export function DetailPane({
         const record = snapshot.toolCalls.find((tool) => tool.id === selection.id);
         if (!record) return <div className="detail-empty">Tool call not found.</div>;
         const fallbackNode = structuralNode ?? model.nodesByKey.get(model.rootNodeKey)!;
-        const promptFromArguments = extractNamedText(record.arguments, ["prompt", "description", "task", "goal", "query", "message", "content", "input", "request"]);
+        // Use full detail for arguments if loaded, fall back to lean snapshot field
+        const fullArgs = fullToolDetail?.arguments ?? record.arguments;
+        const fullResult = fullToolDetail?.resultPreview ?? record.resultPreview ?? record.resultSnippet;
+        const promptFromArguments = extractNamedText(fullArgs, ["prompt", "description", "task", "goal", "query", "message", "content", "input", "request"]);
         const promptText = structuralNode
             ? getNodePromptText(model, structuralNode)
             : (promptFromArguments ? toPromptBlock(promptFromArguments) : UNAVAILABLE_FROM_EVENT_STREAM);
-        const modelText = extractNamedText(record.arguments, ["model", "modelName", "overrideModel", "override_model"]);
+        const modelText = extractNamedText(fullArgs, ["model", "modelName", "overrideModel", "override_model"]);
         const statusSummary = formatToolRecordStatusSummary(record);
         const recentActivity = structuralNode ? getRecentActivityNodes(model, structuralNode, 8) : [];
 
@@ -378,18 +427,18 @@ export function DetailPane({
                     </div>
                 </DetailDisclosure>
 
-                {record.arguments != null && (
+                {fullArgs != null && (
                     <DetailDisclosure title="Arguments" defaultOpen={true}>
                         <ExpandablePre
-                            text={typeof record.arguments === "string" ? record.arguments : JSON.stringify(record.arguments, null, 2)}
+                            text={typeof fullArgs === "string" ? fullArgs : JSON.stringify(fullArgs, null, 2)}
                             limit={1500}
                         />
                     </DetailDisclosure>
                 )}
 
-                {record.resultPreview != null && (
+                {fullResult != null && (
                     <DetailDisclosure title="Result Preview" defaultOpen={true}>
-                        <ExpandablePre text={record.resultPreview} limit={1000} />
+                        <ExpandablePre text={fullResult} limit={1000} />
                     </DetailDisclosure>
                 )}
             </div>
@@ -398,12 +447,15 @@ export function DetailPane({
 
     const record = snapshot.messages.find((message) => message.id === selection.id);
     if (!record) return <div className="detail-empty">Message not found.</div>;
+    // Use full detail for content/reasoning if loaded, fall back to lean preview
+    const fullContent = fullMessageDetail?.content ?? record.contentPreview ?? record.content;
+    const fullReasoning = fullMessageDetail?.reasoningText ?? record.reasoningPreview ?? record.reasoningText;
 
     return (
         <div className="detail-content">
             <DetailHero
                 kicker="Background Task Detail"
-                title={`💬 ${previewText(safeText(record.content) || "(empty)", 88)}`}
+                title={`💬 ${previewText(safeText(fullContent) || "(empty)", 88)}`}
                 subtitle={getNodeDescription(model, structuralNode ?? model.nodesByKey.get(model.rootNodeKey)!)}
                 pills={[
                     { label: "Complete", className: "lane-status status-complete" },
@@ -417,12 +469,12 @@ export function DetailPane({
                 ["Type", "assistant.message"],
                 ["Desc", getNodeDescription(model, structuralNode ?? model.nodesByKey.get(model.rootNodeKey)!)],
                 ["Model", UNAVAILABLE_FROM_EVENT_STREAM],
-                ["Prompt", previewText(safeText(record.content), 100) || UNAVAILABLE_FROM_EVENT_STREAM],
+                ["Prompt", previewText(safeText(fullContent), 100) || UNAVAILABLE_FROM_EVENT_STREAM],
             ]} />
 
             <div className="detail-section">
                 <h4>Prompt (first 10 lines)</h4>
-                <ExpandablePre text={record.content ? toPromptBlock(record.content) : UNAVAILABLE_FROM_EVENT_STREAM} limit={800} />
+                <ExpandablePre text={fullContent ? toPromptBlock(fullContent) : UNAVAILABLE_FROM_EVENT_STREAM} limit={800} />
             </div>
 
             <div className="detail-section">
@@ -443,15 +495,15 @@ export function DetailPane({
                 </div>
             </DetailDisclosure>
 
-            {record.content && (
+            {fullContent && (
                 <DetailDisclosure title="Content" defaultOpen={true}>
-                    <ExpandablePre text={record.content} limit={1000} />
+                    <ExpandablePre text={fullContent} limit={1000} />
                 </DetailDisclosure>
             )}
 
             {record.reasoningAvailability !== "unsupported" && (
                 <DetailDisclosure title="Reasoning" defaultOpen={true}>
-                    <ReasoningSection availability={record.reasoningAvailability} text={record.reasoningText} />
+                    <ReasoningSection availability={record.reasoningAvailability} text={fullReasoning} />
                 </DetailDisclosure>
             )}
         </div>

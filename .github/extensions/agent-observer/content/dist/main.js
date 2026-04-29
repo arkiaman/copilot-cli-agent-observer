@@ -21873,15 +21873,6 @@ function renderFatal(message, detail) {
       </div>
     `;
 }
-function stringifyForSearch(value) {
-  if (value == null) return "";
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
-}
 function pluralize(count, noun, plural = `${noun}s`) {
   return `${count} ${count === 1 ? noun : plural}`;
 }
@@ -22233,6 +22224,8 @@ function buildActivityModel(snapshot) {
     if (hiddenToolCallIds.has(record.id)) continue;
     const key = makeNodeKey("toolcall", record.id);
     const title = record.toolName || shortId(record.id);
+    const argText = record.argSummary ?? summarizeArgs(record.toolName, record.arguments);
+    const resText = record.resultSnippet ?? record.resultPreview;
     nodesByKey.set(key, {
       key,
       kind: "toolcall",
@@ -22243,9 +22236,9 @@ function buildActivityModel(snapshot) {
       kindLabel: "tool",
       title,
       subtitle: [
-        summarizeArgs(record.toolName, record.arguments) || (record.resultPreview ? previewText(safeText(record.resultPreview), 80) : "")
+        argText || (resText ? previewText(safeText(resText), 80) : "")
       ].filter(Boolean).join(" \xB7 "),
-      searchText: `${title} ${stringifyForSearch(record.arguments)} ${record.resultPreview ?? ""}`.toLowerCase(),
+      searchText: `${title} ${argText ?? ""} ${resText ?? ""}`.toLowerCase(),
       parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
       childKeys: graph.childNodeKeys[key] ?? [],
       pathKeys: graph.pathNodeKeys[key] ?? [rootNodeKey, key],
@@ -22255,9 +22248,10 @@ function buildActivityModel(snapshot) {
   }
   for (const record of snapshot.messages) {
     const key = makeNodeKey("message", record.id);
-    const content = safeText(record.content);
+    const content = safeText(record.contentPreview ?? record.content);
     const toolNames = messageToolNames.get(record.id) ?? [];
     const displayTitle = content ? previewText(content, 200) : toolNames.length > 0 ? `\u2192 ${toolNames.slice(0, 4).join(", ")}${toolNames.length > 4 ? ` (+${toolNames.length - 4})` : ""}` : "(empty)";
+    const reasoningText = record.reasoningPreview ?? record.reasoningText;
     nodesByKey.set(key, {
       key,
       kind: "message",
@@ -22268,7 +22262,7 @@ function buildActivityModel(snapshot) {
       kindLabel: "msg",
       title: displayTitle,
       subtitle: record.toolRequestCount > 0 ? `${record.toolRequestCount} tool req${record.toolRequestCount === 1 ? "" : "s"}` : "",
-      searchText: `${content} ${record.reasoningText ?? ""}`.toLowerCase(),
+      searchText: `${content} ${reasoningText ?? ""}`.toLowerCase(),
       parentKey: graph.nodeParentKeys[key] ?? rootNodeKey,
       childKeys: graph.childNodeKeys[key] ?? [],
       pathKeys: graph.pathNodeKeys[key] ?? [rootNodeKey, key],
@@ -22309,6 +22303,8 @@ function buildActivityModel(snapshot) {
       const pathKeys = structuralNode?.pathKeys ?? [rootNodeKey];
       const owner2 = resolveOwnerFromPath(nodesByKey, pathKeys);
       const orphan = structuralNode?.orphan ?? false;
+      const argText = record2.argSummary ?? summarizeArgs(record2.toolName, record2.arguments);
+      const resText = record2.resultSnippet ?? record2.resultPreview;
       items.push({
         key: `${ref.kind}:${record2.id}`,
         kind: "toolcall",
@@ -22323,9 +22319,9 @@ function buildActivityModel(snapshot) {
         icon: statusIcon(record2.status),
         kindLabel: "tool",
         title: record2.toolName || shortId(record2.id),
-        subtitle: summarizeArgs(record2.toolName, record2.arguments) || (record2.resultPreview ? previewText(safeText(record2.resultPreview), 100) : ""),
-        resultLine: summarizeArgs(record2.toolName, record2.arguments) ? resultSnippet(record2.toolName, record2.resultPreview) : "",
-        searchText: `${record2.toolName} ${stringifyForSearch(record2.arguments)} ${record2.resultPreview ?? ""}`.toLowerCase()
+        subtitle: argText || (resText ? previewText(safeText(resText), 100) : ""),
+        resultLine: argText ? resultSnippet(record2.toolName, resText) : "",
+        searchText: `${record2.toolName} ${argText ?? ""} ${resText ?? ""}`.toLowerCase()
       });
       continue;
     }
@@ -22916,6 +22912,45 @@ function AgentHierarchyPanel({
 // src/DetailPane.tsx
 var import_react3 = __toESM(require_react(), 1);
 var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
+function useRecordDetail(kind, id) {
+  const [detail, setDetail] = (0, import_react3.useState)(null);
+  const cacheRef = (0, import_react3.useRef)(/* @__PURE__ */ new Map());
+  (0, import_react3.useEffect)(() => {
+    if (!kind || !id) {
+      setDetail(null);
+      return;
+    }
+    const cacheKey = `${kind}:${id}`;
+    const cached = cacheRef.current.get(cacheKey);
+    if (cached) {
+      setDetail(cached);
+      return;
+    }
+    let cancelled = false;
+    copilot.getRecordDetail(kind, id).then((raw) => {
+      if (cancelled) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed) {
+          if (cacheRef.current.size > 20) {
+            const first = cacheRef.current.keys().next().value;
+            if (first) cacheRef.current.delete(first);
+          }
+          cacheRef.current.set(cacheKey, parsed);
+        }
+        setDetail(parsed);
+      } catch {
+        setDetail(null);
+      }
+    }).catch(() => {
+      if (!cancelled) setDetail(null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [kind, id]);
+  return detail;
+}
 function ExpandablePre({ text, limit = 500, className = "detail-pre" }) {
   const [expanded, setExpanded] = (0, import_react3.useState)(false);
   const HARD_CEIL = 5e4;
@@ -23010,6 +23045,14 @@ function DetailPane({
   model,
   selection
 }) {
+  const fullToolDetail = useRecordDetail(
+    selection?.kind === "toolcall" ? "toolcall" : null,
+    selection?.kind === "toolcall" ? selection.id : null
+  );
+  const fullMessageDetail = useRecordDetail(
+    selection?.kind === "message" ? "message" : null,
+    selection?.kind === "message" ? selection.id : null
+  );
   if (!selection) {
     return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-empty", children: "Select root, branch, tool, or message to inspect details." });
   }
@@ -23130,9 +23173,11 @@ function DetailPane({
     const record2 = snapshot.toolCalls.find((tool) => tool.id === selection.id);
     if (!record2) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-empty", children: "Tool call not found." });
     const fallbackNode = structuralNode ?? model.nodesByKey.get(model.rootNodeKey);
-    const promptFromArguments = extractNamedText(record2.arguments, ["prompt", "description", "task", "goal", "query", "message", "content", "input", "request"]);
+    const fullArgs = fullToolDetail?.arguments ?? record2.arguments;
+    const fullResult = fullToolDetail?.resultPreview ?? record2.resultPreview ?? record2.resultSnippet;
+    const promptFromArguments = extractNamedText(fullArgs, ["prompt", "description", "task", "goal", "query", "message", "content", "input", "request"]);
     const promptText = structuralNode ? getNodePromptText(model, structuralNode) : promptFromArguments ? toPromptBlock(promptFromArguments) : UNAVAILABLE_FROM_EVENT_STREAM;
-    const modelText = extractNamedText(record2.arguments, ["model", "modelName", "overrideModel", "override_model"]);
+    const modelText = extractNamedText(fullArgs, ["model", "modelName", "overrideModel", "override_model"]);
     const statusSummary = formatToolRecordStatusSummary(record2);
     const recentActivity = structuralNode ? getRecentActivityNodes(model, structuralNode, 8) : [];
     return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-content", children: [
@@ -23184,24 +23229,26 @@ function DetailPane({
           /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Breadcrumbs, { pathKeys, model })
         ] })
       ] }),
-      record2.arguments != null && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Arguments", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      fullArgs != null && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Arguments", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
         ExpandablePre,
         {
-          text: typeof record2.arguments === "string" ? record2.arguments : JSON.stringify(record2.arguments, null, 2),
+          text: typeof fullArgs === "string" ? fullArgs : JSON.stringify(fullArgs, null, 2),
           limit: 1500
         }
       ) }),
-      record2.resultPreview != null && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Result Preview", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: record2.resultPreview, limit: 1e3 }) })
+      fullResult != null && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Result Preview", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: fullResult, limit: 1e3 }) })
     ] });
   }
   const record = snapshot.messages.find((message) => message.id === selection.id);
   if (!record) return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "detail-empty", children: "Message not found." });
+  const fullContent = fullMessageDetail?.content ?? record.contentPreview ?? record.content;
+  const fullReasoning = fullMessageDetail?.reasoningText ?? record.reasoningPreview ?? record.reasoningText;
   return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-content", children: [
     /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
       DetailHero,
       {
         kicker: "Background Task Detail",
-        title: `\u{1F4AC} ${previewText(safeText(record.content) || "(empty)", 88)}`,
+        title: `\u{1F4AC} ${previewText(safeText(fullContent) || "(empty)", 88)}`,
         subtitle: getNodeDescription(model, structuralNode ?? model.nodesByKey.get(model.rootNodeKey)),
         pills: [
           { label: "Complete", className: "lane-status status-complete" },
@@ -23216,11 +23263,11 @@ function DetailPane({
       ["Type", "assistant.message"],
       ["Desc", getNodeDescription(model, structuralNode ?? model.nodesByKey.get(model.rootNodeKey))],
       ["Model", UNAVAILABLE_FROM_EVENT_STREAM],
-      ["Prompt", previewText(safeText(record.content), 100) || UNAVAILABLE_FROM_EVENT_STREAM]
+      ["Prompt", previewText(safeText(fullContent), 100) || UNAVAILABLE_FROM_EVENT_STREAM]
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Prompt (first 10 lines)" }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: record.content ? toPromptBlock(record.content) : UNAVAILABLE_FROM_EVENT_STREAM, limit: 800 })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: fullContent ? toPromptBlock(fullContent) : UNAVAILABLE_FROM_EVENT_STREAM, limit: 800 })
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "detail-section", children: [
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h4", { children: "Recent Activity" }),
@@ -23238,8 +23285,8 @@ function DetailPane({
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Breadcrumbs, { pathKeys, model })
       ] })
     ] }),
-    record.content && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Content", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: record.content, limit: 1e3 }) }),
-    record.reasoningAvailability !== "unsupported" && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Reasoning", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ReasoningSection, { availability: record.reasoningAvailability, text: record.reasoningText }) })
+    fullContent && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Content", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ExpandablePre, { text: fullContent, limit: 1e3 }) }),
+    record.reasoningAvailability !== "unsupported" && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(DetailDisclosure, { title: "Reasoning", defaultOpen: true, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ReasoningSection, { availability: record.reasoningAvailability, text: fullReasoning }) })
   ] });
 }
 
@@ -23477,16 +23524,25 @@ function App() {
   const toggleFilter = (0, import_react4.useCallback)((key) => {
     setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
+  const lastRevisionRef = (0, import_react4.useRef)(-1);
   const refresh = (0, import_react4.useCallback)(async () => {
     try {
+      const revStr = await copilot.getRevision();
+      const rev = Number(revStr);
+      if (rev === lastRevisionRef.current) {
+        setError(null);
+        return;
+      }
       const raw = await copilot.getSnapshot();
       if (raw === lastRawRef.current) {
+        lastRevisionRef.current = rev;
         setError(null);
         return;
       }
       lastRawRef.current = raw;
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed.stats === "object" && Array.isArray(parsed.timeline)) {
+        lastRevisionRef.current = rev;
         setSnapshot(parsed);
         setError(null);
       } else {

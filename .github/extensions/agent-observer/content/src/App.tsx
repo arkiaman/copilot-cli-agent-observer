@@ -299,10 +299,21 @@ export function App() {
         setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
     }, []);
 
+    const lastRevisionRef = useRef<number>(-1);
+
     const refresh = useCallback(async () => {
         try {
+            // Check revision first — cheap call, avoids full snapshot serialization
+            const revStr = await copilot.getRevision();
+            const rev = Number(revStr);
+            if (rev === lastRevisionRef.current) {
+                setError(null);
+                return;
+            }
+
             const raw = await copilot.getSnapshot();
             if (raw === lastRawRef.current) {
+                lastRevisionRef.current = rev;
                 setError(null);
                 return;
             }
@@ -310,6 +321,7 @@ export function App() {
             const parsed = JSON.parse(raw);
 
             if (parsed && typeof parsed.stats === "object" && Array.isArray(parsed.timeline)) {
+                lastRevisionRef.current = rev;
                 setSnapshot(parsed);
                 setError(null);
             } else {

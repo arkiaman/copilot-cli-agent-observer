@@ -6,6 +6,8 @@ declare global {
     const copilot: {
         log: (msg: string, opts?: unknown) => Promise<void>;
         getSnapshot: () => Promise<string>;
+        getRevision: () => Promise<string>;
+        getRecordDetail: (kind: string, id: string) => Promise<string>;
     };
 }
 
@@ -36,6 +38,9 @@ export interface ToolCallRecord {
     startedAt?: string;
     completedAt?: string;
     _lastEventTs: string;
+    // Lean snapshot fields (replace full arguments/resultPreview)
+    argSummary?: string;
+    resultSnippet?: string;
 }
 
 export interface AssistantMessageRecord {
@@ -47,6 +52,10 @@ export interface AssistantMessageRecord {
     reasoningText?: string;
     timestamp: string;
     _lastEventTs: string;
+    // Lean snapshot fields (replace full content/reasoningText)
+    contentPreview?: string;
+    contentLength?: number;
+    reasoningPreview?: string;
 }
 
 export interface Stats {
@@ -83,12 +92,13 @@ export interface SessionMeta {
 }
 
 export interface Snapshot {
+    revision?: number;
     subagents: SubagentRecord[];
     toolCalls: ToolCallRecord[];
     messages: AssistantMessageRecord[];
-    toolCallsByParent: Record<string, { toolCallId: string; toolName: string; status: string }[]>;
+    toolCallsByParent?: Record<string, { toolCallId: string; toolName: string; status: string }[]>;
     executionGraph?: ExecutionGraphSnapshot;
-    recentEvents: { ts: string; type: string; summary: string }[];
+    recentEvents?: { ts: string; type: string; summary: string }[];
     timeline: TimelineRef[];
     stats: Stats;
     sessionMeta?: SessionMeta;
