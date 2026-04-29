@@ -8,6 +8,7 @@ This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 
 ### Added
 
+- **Session identity** — each observer window now shows the working directory, git branch, and process ID in the native window title, browser title, and a blue header badge; multiple observer windows from parallel sessions are instantly distinguishable
 - **Agent hierarchy graph** — visual graph with connector lines showing main agent → subagent relationships, status badges, descendant counts, and timing
 - **Drag-to-resize panels** — VS Code-style handles between Agent Hierarchy, Background Activity, and Subagent Details sections; sizes saved as percentages in localStorage
 - **Collapsible sections** — expand/collapse each panel with persistent state in localStorage; Agent Hierarchy starts collapsed by default

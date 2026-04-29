@@ -35,6 +35,7 @@ This is an **alpha release** focused on **read-only observability**:
 - ✅ Drag-to-resize panels — VS Code-style handles between sections, sizes saved to localStorage
 - ✅ Collapsible sections with persistent expand/collapse state
 - ✅ Works without subagents — useful from the moment a session starts, even before agents spawn
+- ✅ Multi-window identity — each observer window shows its session's project, branch, and PID so parallel sessions are distinguishable
 - ✅ Native desktop window (not a browser tab — a real OS window)
 - ✅ Auto-connects to the active Copilot CLI session
 - ❌ No write operations (cannot modify agent behavior)
@@ -178,6 +179,8 @@ The agent has access to the `agent_observer_show` tool, so natural-language requ
 
 ### Reading the dashboard
 
+**Session badge** — the blue chip in the header shows which session this window belongs to (e.g. `my-project @ main (12345)`). The same label appears in the native window title bar and OS taskbar, making it easy to switch between parallel observer windows.
+
 **Agent Hierarchy** — collapsible graph showing the main agent with connector lines to each subagent. Click any node to see its details. Starts collapsed by default; expand it when you want the big picture.
 
 **Execution tree** — hierarchical view showing Root Session → Subagents → Tool Calls / Messages. Expand any node to drill into its children.
@@ -240,7 +243,7 @@ To validate a local checkout end to end:
 ```
 .github/extensions/agent-observer/
 ├── extension.mjs          # Bootstrap entry (npm install if needed, then loads main)
-├── main.mjs               # Extension logic: session wiring, tools, commands
+├── main.mjs               # Extension logic: session identity, wiring, tools, commands
 ├── package.json           # Runtime deps (@webviewjs/webview, ws)
 ├── lib/
 │   ├── copilot-webview.js  # Reusable webview host (HTTP server + WebSocket bridge)
@@ -282,7 +285,7 @@ The native window is powered by [`@webviewjs/webview`](https://github.com/webvie
 - **Manual installation for now** — current Copilot CLI plugin packaging does not load bundled extensions, so Agent Observer must be installed as a user or project extension
 - **Extension API churn** — the underlying extension/runtime APIs used by Agent Observer are still early and may change across Copilot CLI releases
 - **Read-only** — the observer cannot influence agent behavior; it is a passive listener
-- **Single session** — observes one Copilot CLI session at a time; switching sessions resets the view
+- **One window per session** — each observer instance watches one Copilot CLI session; parallel sessions each get their own observer window (identified by project/branch/PID in the title bar)
 - **No persistence** — closing the window or ending the session discards all captured data
 - **WebSocket bridge** — the UI connects to the extension via a local WebSocket; firewalls or security software that block localhost connections may interfere
 - **Linux webview** — requires GTK/WebKit system libraries that may not be present on minimal or server distros
