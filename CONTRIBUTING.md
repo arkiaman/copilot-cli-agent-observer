@@ -34,6 +34,8 @@ To test a local checkout as a real Copilot CLI extension:
 3. Run `/env` and confirm `agent-observer` appears under **Extensions**
 4. Run `/observer` (or `/agent-observer`)
 
+If you are developing inside this repo with a project-local `.github/extensions/agent-observer`, remove the user-level copy before testing. Otherwise Copilot can load both and `/observer` may open two windows.
+
 Do not use `copilot plugin install ...` or `copilot plugin marketplace add ...` against this repo. Those paths are intentionally unsupported until Copilot CLI can ship bundled extensions through plugin packaging.
 
 For user-facing install docs, prefer `install.ps1` / `install.sh`. They install the extension by copying `.github/extensions/agent-observer` into the user's Copilot extensions directory.

@@ -36,6 +36,7 @@ This is an **alpha release** focused on **read-only observability**:
 - ✅ Collapsible sections with persistent expand/collapse state
 - ✅ Works without subagents — useful from the moment a session starts, even before agents spawn
 - ✅ Multi-window identity — each observer window shows its session's project, branch, and PID so parallel sessions are distinguishable
+- ✅ Large-session performance improvements — lean snapshot transport, revision-based polling, and on-demand detail loading keep long sessions responsive
 - ✅ Native desktop window (not a browser tab — a real OS window)
 - ✅ Auto-connects to the active Copilot CLI session
 - ❌ No write operations (cannot modify agent behavior)
@@ -237,6 +238,8 @@ To validate a local checkout end to end:
 3. Run `/env` and confirm `agent-observer` appears under **Extensions**
 4. Run `/observer` (or `/agent-observer`) to open the window
 
+If you are developing **inside this repo**, do **not** also keep a user-level install enabled at `~/.copilot/extensions/agent-observer`. Copilot will load both copies, and `/observer` can open **two windows**.
+
 ### Project structure
 
 ```
@@ -272,14 +275,14 @@ To validate a local checkout end to end:
 
 This is a known SDK-level timing issue where the command handler map loses entries after registration. The extension includes patches that work around this for most setups. If you see the error:
 
-1. **Check your version** — ask the agent to run `observer_dump_summary`. Look for `"version": "1.2.0"` or later. If you see an older version (or no `version` field), reinstall:
+1. **Check your version** — ask the agent to run `observer_dump_summary`. Look for `"version": "1.4.0"` or later. If you see an older version (or no `version` field), reinstall:
    ```powershell
    irm https://raw.githubusercontent.com/Rogn/copilot-cli-agent-observer/master/install.ps1 | iex
    ```
 
 2. **Use the tool instead** — ask the agent to "open the agent observer" or call `agent_observer_show` directly. The tool always works, even when the slash command doesn't.
 
-3. **Collect diagnostics** — if the error persists on v1.2.0+, ask the agent to run `observer_dump_summary` and share the `diagnostics` and `live` sections. Key signals:
+3. **Collect diagnostics** — if the error persists on v1.4.0+, ask the agent to run `observer_dump_summary` and share the `diagnostics` and `live` sections. Key signals:
    - `live.mapIsOriginal: false` → the SDK replaced the internal map after patching
    - `live.getIsPatched: false` → the patched `.get()` was overwritten
    - `mapGetCalls` showing `"/observer"` → command names arrive with a leading slash (normalization should handle this, but useful to confirm)
@@ -294,6 +297,35 @@ Verify the extension loaded correctly:
 1. Run `/env` in Copilot CLI — `agent-observer` should appear under **Extensions**
 2. If not, ensure experimental mode is enabled (`/experimental on` or `copilot --experimental`)
 3. If the extension is listed but the command isn't, ask the agent to reload extensions (`extensions_reload`)
+
+### The observer opens two windows
+
+This usually means Copilot loaded **two copies** of the extension:
+
+- a **user-level install** from `~/.copilot/extensions/agent-observer`
+- and a **project-local install** from `.github/extensions/agent-observer`
+
+This is common while developing **inside this repository**.
+
+**Fix:** remove the user-level copy while testing the project-local one:
+
+```powershell
+Remove-Item -Recurse -Force "$env:USERPROFILE\.copilot\extensions\agent-observer"
+```
+
+Then ask Copilot to reload extensions (`extensions_reload`) or restart Copilot CLI.
+
+### The default layout looks wrong on first open
+
+If the detail pane starts stacked below the activity pane or the initial layout looks cramped, you are likely running an older build. Current versions open wider by default and keep the side-by-side layout until the window is actually narrow.
+
+1. Ask the agent to run `observer_dump_summary`
+2. Confirm you see `"version": "1.4.0"` or later
+3. If not, reinstall with:
+
+```powershell
+irm https://raw.githubusercontent.com/Rogn/copilot-cli-agent-observer/master/install.ps1 | iex
+```
 
 ---
 

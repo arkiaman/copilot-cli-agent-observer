@@ -9,7 +9,7 @@ This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 ### Added
 
 - **Session identity** — each observer window now shows the working directory, git branch, and process ID in the native window title, browser title, and a blue header badge; multiple observer windows from parallel sessions are instantly distinguishable
-- **Version marker** — `observer_dump_summary` now reports extension version (e.g. `"version": "1.2.0"`) so users and developers can confirm which code is actually running
+- **Version marker** — `observer_dump_summary` now reports extension version (e.g. `"version": "1.4.0"`) so users and developers can confirm which code is actually running
 - **Command diagnostics** — `observer_dump_summary` includes live identity checks (was the patched map/get/dispatch replaced at runtime?) and a ring buffer of the last 20 command dispatch calls for debugging slash command issues
 - **Agent hierarchy graph** — visual graph with connector lines showing main agent → subagent relationships, status badges, descendant counts, and timing
 - **Drag-to-resize panels** — VS Code-style handles between Agent Hierarchy, Background Activity, and Subagent Details sections; sizes saved as percentages in localStorage
@@ -23,6 +23,7 @@ This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 - **UI architecture** — split monolithic `main.tsx` into focused modules: `App.tsx` (layout), `AgentHierarchy.tsx`, `ActivityWorkspace.tsx`, `DetailPane.tsx`, `model.ts`, `helpers.ts`, `types.ts`
 - **Background Activity label** — renamed from "Background Subagents" to clarify it includes all background activity, not just subagents
 - **Screenshots and GIF** — recaptured at 1920×1080 with rich mock data showing realistic security audit scenario
+- **Large-session behavior** — the observer now uses lean snapshots, revision-based polling, and on-demand detail loading so long sessions transfer and render far less data by default
 
 ### Fixed
 
@@ -30,6 +31,8 @@ This project uses [Keep a Changelog](https://keepachangelog.com/) conventions.
 - **DetailPane crash** — added optional chaining on `toolRequestCount?.toString()` to prevent crash when selecting messages from the timeline
 - **Resize handle reliability** — added pointer capture for consistent drag behavior across elements
 - **Root auto-selection** — always falls back to root session when no selection exists, rather than using a one-shot guard
+- **Large-memory sessions** — bounded event-store growth and lean transport reduce WebView memory pressure during sessions with thousands of events
+- **Default window layout** — the observer now opens wider and keeps the side-by-side layout by default instead of immediately tripping the narrow-window breakpoint
 
 ## [0.1.0-alpha] — 2026-04-27
 
