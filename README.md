@@ -6,12 +6,6 @@ See what your AI agents are actually doing — every tool call, every subagent s
 
 ![Agent Observer overview — execution tree with stats cards and detail pane](docs/images/hero-overview.png)
 
-## Origin
-
-This project started as a response to [github/copilot-cli#1322](https://github.com/github/copilot-cli/issues/1322) — the need for parent-session observability when working with subagents. It has since grown into a general-purpose agent execution inspector covering the main session, all subagent types, tool calls, and message flows.
-
----
-
 ## Prerequisites
 
 | Requirement | Details |
@@ -99,9 +93,9 @@ Or ask the agent: *"Open the agent observer"* — the `agent_observer_show` tool
 
 ---
 
-## Acknowledgements
+## Origin & Acknowledgements
 
-Built on the [copilot-webview-creator](https://github.com/SteveSandersonMS/copilot-webview-creator) pattern by Steve Sanderson. Native window powered by [`@webviewjs/webview`](https://github.com/webviewjs/webview).
+This project started as a response to [github/copilot-cli#1322](https://github.com/github/copilot-cli/issues/1322) — the need for parent-session observability when working with subagents. Built on the [copilot-webview-creator](https://github.com/SteveSandersonMS/copilot-webview-creator) pattern by Steve Sanderson. Native window powered by [`@webviewjs/webview`](https://github.com/webviewjs/webview).
 
 ## License
 
