@@ -260,16 +260,25 @@ export class CopilotWebview {
             }
             return this._handle;
         }
-        const handle = await showWebview({
-            dir: this.contentDir,
-            title: this.title,
-            width: this.width,
-            height: this.height,
-            callbacks: this.callbacks,
-        });
-        this._handle = handle;
-        handle.onClose(() => { if (this._handle === handle) this._handle = null; });
-        return handle;
+        // Guard against concurrent show() calls racing past the _handle check
+        if (this._showPending) return this._showPending;
+        this._showPending = (async () => {
+            const handle = await showWebview({
+                dir: this.contentDir,
+                title: this.title,
+                width: this.width,
+                height: this.height,
+                callbacks: this.callbacks,
+            });
+            this._handle = handle;
+            handle.onClose(() => { if (this._handle === handle) this._handle = null; });
+            return handle;
+        })();
+        try {
+            return await this._showPending;
+        } finally {
+            this._showPending = null;
+        }
     }
 
     eval(code, opts) {
