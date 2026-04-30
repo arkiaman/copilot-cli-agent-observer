@@ -31,7 +31,16 @@ if [[ ! -d "${source_dir}" ]]; then
 fi
 
 mkdir -p "${install_root}"
-rm -rf "${target_dir}"
+if [[ -d "${target_dir}" ]]; then
+  if ! rm -rf "${target_dir}" 2>/dev/null; then
+    echo "" >&2
+    echo "ERROR: Cannot remove existing install — files are locked." >&2
+    echo "The native webview binary is likely held open by a running Copilot CLI session." >&2
+    echo "" >&2
+    echo "Fix: close the Agent Observer window (or exit Copilot CLI), then re-run this script." >&2
+    exit 1
+  fi
+fi
 cp -R "${source_dir}" "${target_dir}"
 
 echo "Installed Agent Observer to ${target_dir}"

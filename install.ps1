@@ -39,7 +39,18 @@ try {
     }
 
     if (Test-Path $targetDir) {
-        Remove-Item -Path $targetDir -Recurse -Force
+        try {
+            Remove-Item -Path $targetDir -Recurse -Force -ErrorAction Stop
+        }
+        catch {
+            Write-Host ""
+            Write-Host "ERROR: Cannot remove existing install — files are locked." -ForegroundColor Red
+            Write-Host "The native webview binary is likely held open by a running Copilot CLI session." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "Fix: close the Agent Observer window (or exit Copilot CLI), then re-run this script." -ForegroundColor Yellow
+            Write-Host ""
+            throw "Install aborted: $($_.Exception.Message)"
+        }
     }
 
     Copy-Item -Path $sourceDir -Destination $targetDir -Recurse -Force
