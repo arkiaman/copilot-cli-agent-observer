@@ -350,6 +350,7 @@ export function ActivityWorkspace({
     onSearchChange,
     filters,
     onToggleFilter,
+    onDateRangeChange,
     query,
 }: {
     model: ActivityModel;
@@ -359,6 +360,7 @@ export function ActivityWorkspace({
     onSearchChange: (value: string) => void;
     filters: FilterState;
     onToggleFilter: (key: FilterKey) => void;
+    onDateRangeChange: (from: string | null, to: string | null) => void;
     query: string;
 }) {
     const [viewMode, setViewMode] = useState<ViewMode>("tree");
@@ -419,6 +421,39 @@ export function ActivityWorkspace({
                         <FilterButton active={filters.complete} label="Complete" onClick={() => onToggleFilter("complete")} />
                         <FilterButton active={filters.failed} label="Failed" onClick={() => onToggleFilter("failed")} />
                         <FilterButton active={filters.root} label="Root / orphan" onClick={() => onToggleFilter("root")} />
+                    </div>
+                </div>
+
+                <div className="toolbar-row toolbar-row-wrap">
+                    <div className="filter-group date-range-group">
+                        <span className="filter-label">Date range</span>
+                        <label className="date-range-label">
+                            <span className="date-range-hint">From</span>
+                            <input
+                                type="datetime-local"
+                                className="date-range-input"
+                                value={filters.dateFrom ?? ""}
+                                onChange={(e) => onDateRangeChange(e.target.value || null, filters.dateTo ?? null)}
+                            />
+                        </label>
+                        <label className="date-range-label">
+                            <span className="date-range-hint">To</span>
+                            <input
+                                type="datetime-local"
+                                className="date-range-input"
+                                value={filters.dateTo ?? ""}
+                                onChange={(e) => onDateRangeChange(filters.dateFrom ?? null, e.target.value || null)}
+                            />
+                        </label>
+                        {(filters.dateFrom || filters.dateTo) && (
+                            <button
+                                type="button"
+                                className="date-range-clear"
+                                onClick={() => onDateRangeChange(null, null)}
+                            >
+                                Clear dates
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

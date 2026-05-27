@@ -375,6 +375,48 @@ main {
   color: #efe4ff;
 }
 
+/* ── Date range filter ────────────────────────────────────────────────────── */
+.date-range-group {
+  gap: 0.5rem;
+}
+.date-range-label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.date-range-hint {
+  font-size: 0.68rem;
+  color: #7f849c;
+  white-space: nowrap;
+}
+.date-range-input {
+  font-family: inherit;
+  font-size: 0.75rem;
+  background: #181825;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  padding: 0.25rem 0.45rem;
+  outline: none;
+  color-scheme: dark;
+}
+.date-range-input:focus {
+  border-color: #cba6f7;
+}
+.date-range-clear {
+  background: none;
+  border: 1px solid #45475a;
+  border-radius: 6px;
+  color: #a6adc8;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.date-range-clear:hover {
+  background: rgba(69, 71, 90, 0.3);
+}
+
 /* ── Shared activity containers ──────────────────────────────────────────── */
 .tree-list,
 .flat-list {

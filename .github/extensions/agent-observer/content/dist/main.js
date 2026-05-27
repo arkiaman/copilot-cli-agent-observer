@@ -22349,6 +22349,13 @@ function buildActivityModel(snapshot) {
   }
   return { items, nodesByKey, rootNodeKey, graph, subagentMap, toolCallMap, messageMap };
 }
+function inDateRange(ts, dateFrom, dateTo) {
+  if (!dateFrom && !dateTo) return true;
+  if (!ts) return true;
+  if (dateFrom && ts < dateFrom) return false;
+  if (dateTo && ts > dateTo) return false;
+  return true;
+}
 function selectionToStructuralNodeKey(selection, model) {
   if (!selection) return null;
   if (selection.kind === "root") return model.rootNodeKey;
@@ -22364,6 +22371,7 @@ function matchesItemFilters(item, filters, query) {
   if (item.kind === "message" && !filters.messages) return false;
   if (item.kind !== "message" && !filters[normalizeStatus(item.status)]) return false;
   if (!filters.root && (item.orphan || item.kind !== "subagent" && item.ownerId === SYNTHETIC_ROOT_ID)) return false;
+  if (!inDateRange(item.ts, filters.dateFrom, filters.dateTo)) return false;
   if (!query) return true;
   return item.searchText.includes(query) || item.ownerLabel.toLowerCase().includes(query);
 }
@@ -22372,6 +22380,7 @@ function matchesNodeFilters(node, filters, query) {
   if (node.kind === "toolcall" && !filters.tools) return false;
   if (node.kind === "message" && !filters.messages) return false;
   if (node.kind !== "root" && node.kind !== "message" && !filters[normalizeStatus(node.status)]) return false;
+  if (node.kind !== "root" && !inDateRange(node.ts, filters.dateFrom, filters.dateTo)) return false;
   if (!query) return true;
   return node.searchText.includes(query) || node.title.toLowerCase().includes(query);
 }
@@ -22706,6 +22715,7 @@ function ActivityWorkspace({
   onSearchChange,
   filters,
   onToggleFilter,
+  onDateRangeChange,
   query
 }) {
   const [viewMode, setViewMode] = (0, import_react.useState)("tree");
@@ -22765,7 +22775,43 @@ function ActivityWorkspace({
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.failed, label: "Failed", onClick: () => onToggleFilter("failed") }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FilterButton, { active: filters.root, label: "Root / orphan", onClick: () => onToggleFilter("root") })
         ] })
-      ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "toolbar-row toolbar-row-wrap", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "filter-group date-range-group", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "filter-label", children: "Date range" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "date-range-label", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "date-range-hint", children: "From" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              type: "datetime-local",
+              className: "date-range-input",
+              value: filters.dateFrom ?? "",
+              onChange: (e) => onDateRangeChange(e.target.value || null, filters.dateTo ?? null)
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "date-range-label", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "date-range-hint", children: "To" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              type: "datetime-local",
+              className: "date-range-input",
+              value: filters.dateTo ?? "",
+              onChange: (e) => onDateRangeChange(filters.dateFrom ?? null, e.target.value || null)
+            }
+          )
+        ] }),
+        (filters.dateFrom || filters.dateTo) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            type: "button",
+            className: "date-range-clear",
+            onClick: () => onDateRangeChange(null, null),
+            children: "Clear dates"
+          }
+        )
+      ] }) })
     ] }),
     viewMode === "tree" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       ExecutionTreeView,
@@ -23518,11 +23564,16 @@ function App() {
     running: true,
     complete: true,
     failed: true,
-    root: true
+    root: true,
+    dateFrom: null,
+    dateTo: null
   });
   const query = search.trim().toLowerCase();
   const toggleFilter = (0, import_react4.useCallback)((key) => {
     setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+  const setDateRange = (0, import_react4.useCallback)((from, to) => {
+    setFilters((prev) => ({ ...prev, dateFrom: from || null, dateTo: to || null }));
   }, []);
   const lastRevisionRef = (0, import_react4.useRef)(-1);
   const refresh = (0, import_react4.useCallback)(async () => {
@@ -23669,6 +23720,7 @@ function App() {
               onSearchChange: setSearch,
               filters,
               onToggleFilter: toggleFilter,
+              onDateRangeChange: setDateRange,
               query
             }
           ) }),

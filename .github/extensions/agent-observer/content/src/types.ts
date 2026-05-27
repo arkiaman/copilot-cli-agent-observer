@@ -135,6 +135,8 @@ export interface FilterState {
     complete: boolean;
     failed: boolean;
     root: boolean;
+    dateFrom?: string | null;
+    dateTo?: string | null;
 }
 
 export interface ActivityItem {

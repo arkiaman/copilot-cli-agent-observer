@@ -539,6 +539,15 @@ export function buildActivityModel(snapshot: Snapshot): ActivityModel {
 
 /* ── Selection + filtering ──────────────────────────────────────────────── */
 
+function inDateRange(ts: string, dateFrom?: string | null, dateTo?: string | null): boolean {
+    if (!dateFrom && !dateTo) return true;
+    if (!ts) return true;
+    // datetime-local values like "2026-05-27T10:00" compare correctly with ISO strings lexicographically
+    if (dateFrom && ts < dateFrom) return false;
+    if (dateTo && ts > dateTo) return false;
+    return true;
+}
+
 export function selectionToStructuralNodeKey(selection: Selection, model: ActivityModel): string | null {
     if (!selection) return null;
     if (selection.kind === "root") return model.rootNodeKey;
@@ -555,6 +564,7 @@ export function matchesItemFilters(item: ActivityItem, filters: FilterState, que
     if (item.kind === "message" && !filters.messages) return false;
     if (item.kind !== "message" && !filters[normalizeStatus(item.status)]) return false;
     if (!filters.root && (item.orphan || (item.kind !== "subagent" && item.ownerId === SYNTHETIC_ROOT_ID))) return false;
+    if (!inDateRange(item.ts, filters.dateFrom, filters.dateTo)) return false;
     if (!query) return true;
     return item.searchText.includes(query) || item.ownerLabel.toLowerCase().includes(query);
 }
@@ -564,6 +574,7 @@ export function matchesNodeFilters(node: ExecutionNode, filters: FilterState, qu
     if (node.kind === "toolcall" && !filters.tools) return false;
     if (node.kind === "message" && !filters.messages) return false;
     if (node.kind !== "root" && node.kind !== "message" && !filters[normalizeStatus(node.status)]) return false;
+    if (node.kind !== "root" && !inDateRange(node.ts, filters.dateFrom, filters.dateTo)) return false;
     if (!query) return true;
     return node.searchText.includes(query) || node.title.toLowerCase().includes(query);
 }

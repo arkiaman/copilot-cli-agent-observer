@@ -293,10 +293,15 @@ export function App() {
         complete: true,
         failed: true,
         root: true,
+        dateFrom: null,
+        dateTo: null,
     });
     const query = search.trim().toLowerCase();
     const toggleFilter = useCallback((key: FilterKey) => {
         setFilters((prev) => ({ ...prev, [key]: !prev[key] }));
+    }, []);
+    const setDateRange = useCallback((from: string | null, to: string | null) => {
+        setFilters((prev) => ({ ...prev, dateFrom: from || null, dateTo: to || null }));
     }, []);
 
     const lastRevisionRef = useRef<number>(-1);
@@ -462,6 +467,7 @@ export function App() {
                                     onSearchChange={setSearch}
                                     filters={filters}
                                     onToggleFilter={toggleFilter}
+                                    onDateRangeChange={setDateRange}
                                     query={query}
                                 />
                             </CollapsibleSection>
