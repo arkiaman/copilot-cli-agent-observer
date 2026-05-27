@@ -542,9 +542,11 @@ export function buildActivityModel(snapshot: Snapshot): ActivityModel {
 function inDateRange(ts: string, dateFrom?: string | null, dateTo?: string | null): boolean {
     if (!dateFrom && !dateTo) return true;
     if (!ts) return true;
-    // datetime-local values like "2026-05-27T10:00" compare correctly with ISO strings lexicographically
-    if (dateFrom && ts < dateFrom) return false;
-    if (dateTo && ts > dateTo) return false;
+    // Parse using Date to handle both ISO UTC strings (event timestamps) and
+    // datetime-local strings without timezone (filter values, treated as local time).
+    const tsMs = new Date(ts).getTime();
+    if (dateFrom && tsMs < new Date(dateFrom).getTime()) return false;
+    if (dateTo && tsMs > new Date(dateTo).getTime()) return false;
     return true;
 }
 

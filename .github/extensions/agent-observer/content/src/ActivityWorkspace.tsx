@@ -3,6 +3,8 @@
  */
 
 import React, { useState, useCallback, useMemo } from "react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 import type { ActivityItem, ActivityModel, Selection, FilterState, FilterKey, ViewMode, VisibleTreeNode, ExecutionNode } from "./types.js";
 import { UNAVAILABLE_FROM_EVENT_STREAM } from "./types.js";
 import { shortId, fmtTime, statusIcon, statusClass, selectionKey, itemSelectionKey } from "./helpers.js";
@@ -18,6 +20,19 @@ import {
     getRecentActivityPreview,
 } from "./model.js";
 
+
+/* ── DatePicker helpers ─────────────────────────────────────────────────── */
+
+function filterStringToDate(s: string | null | undefined): Date | null {
+    if (!s) return null;
+    return new Date(s); // "YYYY-MM-DDTHH:mm" parsed as local time
+}
+
+function dateToFilterString(d: Date | null): string | null {
+    if (!d) return null;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 /* ── EventRow ───────────────────────────────────────────────────────────── */
 
@@ -429,20 +444,28 @@ export function ActivityWorkspace({
                         <span className="filter-label">Date range</span>
                         <label className="date-range-label">
                             <span className="date-range-hint">From</span>
-                            <input
-                                type="datetime-local"
+                            <DatePicker
+                                selected={filterStringToDate(filters.dateFrom)}
+                                onChange={(date) => onDateRangeChange(dateToFilterString(date), filters.dateTo ?? null)}
+                                showTimeSelect
+                                timeFormat="HH:mm"
+                                timeIntervals={15}
+                                dateFormat="dd/MM/yyyy HH:mm"
+                                placeholderText="dd/MM/yyyy HH:mm"
                                 className="date-range-input"
-                                value={filters.dateFrom ?? ""}
-                                onChange={(e) => onDateRangeChange(e.target.value || null, filters.dateTo ?? null)}
                             />
                         </label>
                         <label className="date-range-label">
                             <span className="date-range-hint">To</span>
-                            <input
-                                type="datetime-local"
+                            <DatePicker
+                                selected={filterStringToDate(filters.dateTo)}
+                                onChange={(date) => onDateRangeChange(filters.dateFrom ?? null, dateToFilterString(date))}
+                                showTimeSelect
+                                timeFormat="HH:mm"
+                                timeIntervals={15}
+                                dateFormat="dd/MM/yyyy HH:mm"
+                                placeholderText="dd/MM/yyyy HH:mm"
                                 className="date-range-input"
-                                value={filters.dateTo ?? ""}
-                                onChange={(e) => onDateRangeChange(filters.dateFrom ?? null, e.target.value || null)}
                             />
                         </label>
                         {(filters.dateFrom || filters.dateTo) && (

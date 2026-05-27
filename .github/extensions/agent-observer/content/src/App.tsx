@@ -338,8 +338,6 @@ export function App() {
     }, []);
 
     useEffect(() => {
-        void refresh();
-
         let inflight = false;
         const tick = async () => {
             if (document.visibilityState === "hidden") return;
@@ -347,6 +345,7 @@ export function App() {
             inflight = true;
             try { await refresh(); } finally { inflight = false; }
         };
+        void tick();
         const onVisible = () => {
             if (document.visibilityState === "visible") {
                 void tick();
